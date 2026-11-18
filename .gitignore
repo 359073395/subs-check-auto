@@ -1,0 +1,7 @@
+output/
+*.exe
+subs-check-pro
+GeoLite2-Country.mmdb
+.DS_Store
+__pycache__/
+*.pyc

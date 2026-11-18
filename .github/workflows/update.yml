@@ -1,0 +1,51 @@
+name: 自动采集测速并更新 Top 20 订阅
+
+on:
+  schedule:
+    # 每 6 小时自动运行一次 (UTC 0/6/12/18 点，对应北京时间 08/14/20/02 点)
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update-subs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+
+      - name: 安装 Python YAML 依赖
+        run: python3 -m pip install --quiet pyyaml
+
+      - name: 下载最新版 subs-check-pro (Linux x86_64)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release download --repo sinspired/subs-check-pro --pattern "subs-check-pro_Linux_x86_64.tar.gz"
+          tar -xzf subs-check-pro_Linux_x86_64.tar.gz
+          rm -f subs-check-pro_Linux_x86_64.tar.gz
+          ls -la subs-check-pro
+
+      - name: 运行测活、测速与纯净度检测
+        run: bash ./scripts/run_in_ci.sh
+
+      - name: 按纯净度与速度精选 Top 20 节点
+        run: python3 ./scripts/select_top20.py
+
+      - name: 提交并推送最新订阅到仓库
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add subs/
+          if git diff --cached --quiet; then
+            echo "订阅内容无变化，跳过提交。"
+            exit 0
+          fi
+          git commit -m "chore: 自动更新精选 Top 20 订阅 [$(TZ=Asia/Shanghai date '+%Y-%m-%d %H:%M')]"
+          git push
