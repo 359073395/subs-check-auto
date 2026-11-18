@@ -20,6 +20,9 @@
 
 * **查看最近一次测速与节点详情**：[subs/STATUS.md](./subs/STATUS.md)
 
+## 绑定自己的域名（Cloudflare Workers 加速直连）
+仓库已内置 [cloudflare-worker/worker.js](./cloudflare-worker/worker.js)，无需任何代码改动即可直接部署到 Cloudflare Workers 并绑定自定义域名（支持 `https://你的域名/mihomo.yaml`、`https://你的域名/base64.txt`、`https://你的域名/all.yaml`）。
+
 ## 如何手动立即更新一次？
 1. 打开本仓库顶部的 **Actions** 标签页；
 2. 点击左侧的 **自动采集测速并更新 Top 20 订阅**；
