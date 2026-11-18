@@ -50,12 +50,12 @@ update-on-startup: false
 prerelease: false
 
 # -----------WebUI 与 Sub-Store-----------
-listen-port: '127.0.0.1:8199'
+listen-port: ':8199'
 enable-web-ui: false
 api-key: 'ci-local-runner'
 share-password: ''
 
-sub-store-port: '127.0.0.1:8299'
+sub-store-port: ':8299'
 sub-store-path: '/substore'
 sub-store-update-notify: false
 mihomo-overwrite-url: 'http://127.0.0.1:8199/Mihomo-Rules-CDN.yaml'
