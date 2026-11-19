@@ -413,7 +413,10 @@ def main() -> int:
         encoding="utf-8",
     )
 
-    has_mihomo = filter_mihomo(top_proxies, orig_to_clean, OUTPUT_SUB_DIR / "mihomo.yaml", PUBLISH_DIR / "mihomo.yaml")
+    mihomo_src = OUTPUT_SUB_DIR / "mihomo.yaml"
+    if not mihomo_src.exists() and (PUBLISH_DIR / "mihomo.yaml").exists():
+        mihomo_src = PUBLISH_DIR / "mihomo.yaml"
+    has_mihomo = filter_mihomo(top_proxies, orig_to_clean, mihomo_src, PUBLISH_DIR / "mihomo.yaml")
     has_base64 = filter_and_rename_base64(name_pairs, OUTPUT_SUB_DIR / "base64.txt", PUBLISH_DIR / "base64.txt")
 
     beijing_tz = timezone(timedelta(hours=8))

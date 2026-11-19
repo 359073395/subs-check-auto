@@ -87,18 +87,16 @@ try {
     }
 } catch {}
 
-& git @ProxyArgs pull --rebase 2>$null | Out-Null
+$ErrorActionPreference = "Continue"
 git add subs/
-$hasChanges = $true
 git diff --cached --quiet
-if ($LASTEXITCODE -eq 0) { $hasChanges = $false }
-
-if ($hasChanges) {
+if ($LASTEXITCODE -ne 0) {
     $ts = Get-Date -Format "yyyy-MM-dd HH:mm"
-    git commit -m "chore: 本地真实网络实测更新 Top 20 可用订阅 [$ts]"
-    & git @ProxyArgs push
+    git commit -m "chore: 本地真实网络实测更新可用订阅 [$ts]"
+    & git @ProxyArgs pull --rebase origin main
+    & git @ProxyArgs push origin main
     if ($LASTEXITCODE -eq 0) {
-        Write-Host "`n全部完成！你的域名订阅与 GitHub 订阅均已更新为最新 20 个本机实测可用节点。" -ForegroundColor Cyan
+        Write-Host "`n全部完成！你的域名订阅与 GitHub 订阅均已更新为最新本机实测可用节点。" -ForegroundColor Cyan
     } else {
         Write-Host "`n警告：本地 subs/ 文件已生成，但推送到 GitHub 失败，请确认网络/代理后重试。" -ForegroundColor Red
     }
