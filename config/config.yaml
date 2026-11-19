@@ -63,6 +63,14 @@ mihomo-overwrite-url: 'http://127.0.0.1:8199/Mihomo-Rules-CDN.yaml'
 # -----------节点处理-----------
 rename-node: true
 node-prefix: ''
+# 仅保留加密隧道协议（过滤掉 http / socks5 等易被阻断协议）
+node-type:
+  - vless
+  - trojan
+  - hysteria2
+  - hy2
+  - vmess
+  - ss
 drop-bad-cf-nodes: false
 enhanced-tag: true
 
