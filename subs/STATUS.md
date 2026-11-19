@@ -1,29 +1,109 @@
-# 精选 Top 20 公益节点状态清单
+# 精选公益节点状态清单 (Top 100)
 
-- 最近更新时间：`2026-11-19 10:42:06 (北京时间)`
-- 本轮通过初筛节点数：`621`（过滤兼容后：`294`）
-- 精选保留节点数：`20`
+- 最近更新时间：`2026-11-19 13:45:19 (北京时间)`
+- 本轮通过初筛节点数：`779`（剔除被阻断免费域名后：`281`）
+- 精选保留节点数：`100`
 - 已生成订阅：`all.yaml` / `mihomo.yaml` (已更新) / `base64.txt` (已更新)
 
 | 序号 | 节点名称 | 协议 | 类型 | 纯净度(风险值) | 测速 |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| 1 | US 01 | vless | CDN/TLS | 0% | 14.7 MB/s |
-| 2 | SG 01 | vless | CDN/TLS | 0% | 11.9 MB/s |
-| 3 | SG 02 | vless | CDN/TLS | 0% | 9.7 MB/s |
-| 4 | SG 03 | vless | CDN/TLS | 0% | 8.1 MB/s |
-| 5 | DE 01 | vless | CDN/TLS | 0% | 4.9 MB/s |
-| 6 | SG 04 | vless | CDN/TLS | 0% | 4.2 MB/s |
-| 7 | BD 01 | vless | CDN/TLS | 0% | 4.1 MB/s |
-| 8 | SG 05 | vless | CDN/TLS | 0% | 3.9 MB/s |
-| 9 | SG 06 | vless | CDN/TLS | 0% | 3.8 MB/s |
-| 10 | FR 01 | vless | CDN/TLS | 0% | 3.7 MB/s |
-| 11 | SG 07 | vless | CDN/TLS | 0% | 3.7 MB/s |
-| 12 | JP 01 | vless | CDN/TLS | 0% | 3.4 MB/s |
-| 13 | GB 01 | vless | CDN/TLS | 0% | 2.9 MB/s |
-| 14 | SG 08 | vless | CDN/TLS | 0% | 2.3 MB/s |
-| 15 | SG 09 | vless | CDN/TLS | 0% | 1.5 MB/s |
-| 16 | SG 10 | vless | CDN/TLS | 0% | 614 KB/s |
-| 17 | SG 11 | vless | CDN/TLS | 0% | 307 KB/s |
-| 18 | US 02 | vless | CDN/TLS | 13% | 16.0 MB/s |
-| 19 | US 03 | vless | CDN/TLS | 13% | 12.0 MB/s |
-| 20 | US 04 | vless | CDN/TLS | 13% | 8.9 MB/s |
+| 1 | SG 01 | vless | CDN/TLS | 0% | 7.5 MB/s |
+| 2 | JP 01 | vless | CDN/TLS | 4% | 307 KB/s |
+| 3 | SG 02 | vless | Reality | 0% | 14.4 MB/s |
+| 4 | US 01 | vless | Reality | 8% | 11.5 MB/s |
+| 5 | US 02 | vless | Reality | 0% | 11.1 MB/s |
+| 6 | NL 01 | vless | Reality | 0% | 5.7 MB/s |
+| 7 | RU 01 | vless | Reality | 0% | 5.4 MB/s |
+| 8 | LV 01 | vless | Reality | 0% | 5.4 MB/s |
+| 9 | NL 02 | vless | Reality | 0% | 4.8 MB/s |
+| 10 | US 03 | vless | Reality | 0% | 4.7 MB/s |
+| 11 | SG 03 | vless | Reality | 0% | 4.6 MB/s |
+| 12 | US 04 | vless | Reality | 0% | 3.5 MB/s |
+| 13 | CH 01 | vless | Reality | 0% | 3.0 MB/s |
+| 14 | SG 04 | vless | Reality | 0% | 2.8 MB/s |
+| 15 | US 05 | vless | Reality | 0% | 512 KB/s |
+| 16 | US 06 | vless | Reality | 0% | 512 KB/s |
+| 17 | IN 01 | vless | Reality | 10% | 512 KB/s |
+| 18 | SE 01 | vless | Reality | 0% | 307 KB/s |
+| 19 | SG 05 | trojan | TLS/其他 | 0% | 33.1 MB/s |
+| 20 | SG 06 | trojan | TLS/其他 | 0% | 20.4 MB/s |
+| 21 | SG 07 | trojan | TLS/其他 | 0% | 16.9 MB/s |
+| 22 | RU 02 | vless | TLS/其他 | 0% | 3.9 MB/s |
+| 23 | US 07 | trojan | TLS/其他 | 2% | 3.0 MB/s |
+| 24 | GB 01 | vless | TLS/其他 | 10% | 717 KB/s |
+| 25 | US 08 | vless | TLS/其他 | 0% | 14.2 MB/s |
+| 26 | SG 08 | vless | TLS/其他 | 0% | 10.0 MB/s |
+| 27 | SG 09 | vmess | TLS/其他 | 0% | 9.2 MB/s |
+| 28 | SG 10 | vmess | TLS/其他 | 0% | 8.1 MB/s |
+| 29 | NL 03 | vless | TLS/其他 | 0% | 7.4 MB/s |
+| 30 | SG 11 | vless | TLS/其他 | 0% | 7.1 MB/s |
+| 31 | SG 12 | vmess | TLS/其他 | 0% | 6.2 MB/s |
+| 32 | FI 01 | vless | TLS/其他 | 6% | 5.2 MB/s |
+| 33 | SG 13 | vmess | TLS/其他 | 5% | 4.8 MB/s |
+| 34 | SG 14 | vmess | TLS/其他 | 0% | 4.5 MB/s |
+| 35 | SG 15 | vmess | TLS/其他 | 0% | 4.3 MB/s |
+| 36 | SG 16 | vmess | TLS/其他 | 0% | 4.2 MB/s |
+| 37 | SG 17 | vless | TLS/其他 | 0% | 4.0 MB/s |
+| 38 | SG 18 | vmess | TLS/其他 | 0% | 4.0 MB/s |
+| 39 | RU 03 | vless | TLS/其他 | 0% | 3.9 MB/s |
+| 40 | SG 19 | vmess | TLS/其他 | 0% | 3.0 MB/s |
+| 41 | US 09 | vmess | TLS/其他 | 1% | 2.5 MB/s |
+| 42 | SG 20 | vless | TLS/其他 | 0% | 2.1 MB/s |
+| 43 | SG 21 | trojan | TLS/其他 | 0% | 512 KB/s |
+| 44 | SC 01 | trojan | TLS/其他 | 0% | 512 KB/s |
+| 45 | GB 02 | vless | TLS/其他 | 0% | 307 KB/s |
+| 46 | SG 22 | hysteria2 | TLS/其他 | 0% | 7.2 MB/s |
+| 47 | FR 01 | hysteria2 | TLS/其他 | 1% | 6.7 MB/s |
+| 48 | FR 02 | hysteria2 | TLS/其他 | 1% | 6.2 MB/s |
+| 49 | TW 01 | hysteria2 | TLS/其他 | 0% | 5.7 MB/s |
+| 50 | TW 02 | hysteria2 | TLS/其他 | 0% | 5.4 MB/s |
+| 51 | TW 03 | hysteria2 | TLS/其他 | 0% | 5.4 MB/s |
+| 52 | BY 01 | hysteria2 | TLS/其他 | 10% | 5.0 MB/s |
+| 53 | KR 01 | hysteria2 | TLS/其他 | 1% | 4.7 MB/s |
+| 54 | CH 02 | hysteria2 | TLS/其他 | 4% | 4.2 MB/s |
+| 55 | KR 02 | hysteria2 | TLS/其他 | 4% | 3.8 MB/s |
+| 56 | HK 01 | hysteria2 | TLS/其他 | 0% | 3.7 MB/s |
+| 57 | AU 01 | hysteria2 | TLS/其他 | 1% | 3.7 MB/s |
+| 58 | SG 23 | hysteria2 | TLS/其他 | 0% | 3.6 MB/s |
+| 59 | JP 02 | hysteria2 | TLS/其他 | 1% | 3.6 MB/s |
+| 60 | SG 24 | hysteria2 | TLS/其他 | 0% | 3.5 MB/s |
+| 61 | SG 25 | hysteria2 | TLS/其他 | 0% | 3.4 MB/s |
+| 62 | SG 26 | hysteria2 | TLS/其他 | 0% | 3.3 MB/s |
+| 63 | KR 03 | hysteria2 | TLS/其他 | 4% | 3.3 MB/s |
+| 64 | SG 27 | hysteria2 | TLS/其他 | 0% | 3.1 MB/s |
+| 65 | KR 04 | hysteria2 | TLS/其他 | 1% | 2.8 MB/s |
+| 66 | US 10 | hysteria2 | TLS/其他 | 0% | 2.1 MB/s |
+| 67 | JP 03 | hysteria2 | TLS/其他 | 0% | 512 KB/s |
+| 68 | AU 02 | hysteria2 | TLS/其他 | 4% | 512 KB/s |
+| 69 | US 11 | vless | CDN/TLS | 13% | 11.6 MB/s |
+| 70 | US 12 | vless | CDN/TLS | 13% | 5.5 MB/s |
+| 71 | SE 02 | vless | CDN/TLS | 13% | 922 KB/s |
+| 72 | US 13 | vless | CDN/TLS | 13% | 614 KB/s |
+| 73 | US 14 | vless | CDN/TLS | 13% | 307 KB/s |
+| 74 | US 15 | vless | Reality | 30% | 5.9 MB/s |
+| 75 | SG 28 | vless | Reality | 20% | 3.4 MB/s |
+| 76 | RU 04 | vless | Reality | 23% | 3.0 MB/s |
+| 77 | US 16 | vless | TLS/其他 | 20% | 6.2 MB/s |
+| 78 | BR 01 | vmess | TLS/其他 | 17% | 3.5 MB/s |
+| 79 | US 17 | trojan | TLS/其他 | 25% | 3.4 MB/s |
+| 80 | US 18 | hysteria2 | TLS/其他 | 13% | 10.4 MB/s |
+| 81 | DE 01 | vless | Reality | 33% | 5.4 MB/s |
+| 82 | CZ 01 | vless | Reality | 42% | 4.2 MB/s |
+| 83 | BG 01 | vless | Reality | 45% | 4.1 MB/s |
+| 84 | KR 05 | trojan | TLS/其他 | 31% | 5.3 MB/s |
+| 85 | ZA 01 | trojan | TLS/其他 | 38% | 2.7 MB/s |
+| 86 | US 19 | vmess | TLS/其他 | 60% | 7.7 MB/s |
+| 87 | US 20 | vmess | TLS/其他 | 58% | 6.3 MB/s |
+| 88 | NL 04 | vmess | TLS/其他 | 51% | 6.1 MB/s |
+| 89 | NL 05 | vmess | TLS/其他 | 53% | 4.4 MB/s |
+| 90 | US 21 | vmess | TLS/其他 | 60% | 3.4 MB/s |
+| 91 | FR 03 | vmess | TLS/其他 | 46% | 2.6 MB/s |
+| 92 | US 22 | hysteria2 | TLS/其他 | 51% | 12.4 MB/s |
+| 93 | NL 06 | hysteria2 | TLS/其他 | 31% | 4.6 MB/s |
+| 94 | SE 03 | hysteria2 | TLS/其他 | 33% | 2.1 MB/s |
+| 95 | US 23 | vless | Reality | 63% | 13.8 MB/s |
+| 96 | US 24 | vless | Reality | 63% | 5.9 MB/s |
+| 97 | CA 01 | vless | Reality | 100% | 3.7 MB/s |
+| 98 | FR 04 | vless | Reality | 100% | 819 KB/s |
+| 99 | US 25 | trojan | TLS/其他 | 100% | 100.2 MB/s |
+| 100 | CA 02 | trojan | TLS/其他 | 100% | 12.5 MB/s |
