@@ -25,8 +25,8 @@ nameserver:
 
 timeout: 4000
 
-# 收集更多合格节点池，以便尽量挑满 20 个高纯净且支持 CDN/TLS 抗封锁的国内可用节点
-success-limit: 600
+# 收集足够多的合格加密节点，再由精选脚本剔除易被 SNI 阻断的免费域名后保留 Top 100
+success-limit: 800
 
 use-last-result: false
 use-history-result: false

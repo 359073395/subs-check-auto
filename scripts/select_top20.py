@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """
-从 subs-check-pro 输出的可用节点中，剔除明文/低兼容/易被阻断节点，
-优先挑选 Cloudflare/CDN WS+TLS 等国内直连高可用节点，按 IP 纯净度与速度精选 Top 20，
-并将节点名称统一简化为干净的国家简写（如 SG 01、US 01），同时输出 Mihomo / Base64 / YAML。
+从 subs-check-pro 输出的可用节点中：
+1. 剔除明文协议、易被阻断协议（http/socks5/ss/非TLS vmess）与异常出口；
+2. 剔除在国内大概率触发 SNI 阻断的公开免费域名（pages.dev/workers.dev/dpdns.org/de5.net 等）；
+3. 按 IP 纯净度 + 协议稳定性（独立域名 CDN/TLS、VLESS Reality、Trojan）+ 速度精选 Top 100；
+4. 按 IP/网段去重，避免同机房节点占满名额，并将名称简化为纯国家简写（如 US 01、SG 01）。
 """
 
 from __future__ import annotations
@@ -19,7 +21,7 @@ from typing import Any
 
 import yaml
 
-TOP_N = 20
+TOP_N = 100
 OUTPUT_SUB_DIR = Path("output/sub")
 PUBLISH_DIR = Path("subs")
 
@@ -28,6 +30,19 @@ RISK_RE = re.compile(r"\|\s*(\d+)%")
 BAD_EXIT_RE = re.compile(r"YT-(?:IR|RU|CN|PK|EG)\b", re.IGNORECASE)
 COUNTRY_CODE_RE = re.compile(r"([A-Z]{2})(?=[¹²³⁰ˣ_\|\s]|$)")
 STD_TLS_PORTS = {443, 2053, 2083, 2087, 2096, 8443}
+
+# 在国内实测大面积被 SNI 重置/阻断的公开免费代理域名后缀
+BLOCKED_SNI_SUFFIXES = (
+    ".pages.dev",
+    ".workers.dev",
+    ".dpdns.org",
+    ".de5.net",
+    ".qzz.io",
+    ".eu.cc",
+    ".us.ci",
+    ".ir",
+    ".ru",
+)
 
 # Cloudflare 常见 Anycast 与 SaaS CDN IPv4 网段
 CF_CIDRS = [
@@ -70,10 +85,21 @@ def is_cf_cdn_ip(host: str) -> bool:
     return any(ip_obj in net for net in CF_CIDRS)
 
 
+def get_ws_host(p: dict[str, Any]) -> str:
+    ws_opts = p.get("ws-opts")
+    if isinstance(ws_opts, dict):
+        headers = ws_opts.get("headers")
+        if isinstance(headers, dict):
+            return str(headers.get("Host") or headers.get("host") or "").strip()
+    return ""
+
+
 def server_dedupe_key(p: dict[str, Any]) -> str:
     srv = str(p.get("server", "")).lower().strip()
-    if is_ip_literal(srv) and not is_cf_cdn_ip(srv):
-        # 裸 VPS IP 按 /24 网段去重，避免同机房多IP霸榜
+    sni = str(p.get("servername", "") or p.get("sni", "")).lower().strip()
+    if is_cf_cdn_ip(srv):
+        return f"cf:{srv}:{sni}"
+    if is_ip_literal(srv):
         parts = srv.split(".")
         if len(parts) == 4:
             return ".".join(parts[:3]) + ".0/24"
@@ -81,7 +107,6 @@ def server_dedupe_key(p: dict[str, Any]) -> str:
 
 
 def extract_country_code(name: str) -> str:
-    # 优先从前缀如 "🇸🇬SG²_56|..." 提取国家二字代码
     head = name.split("|", 1)[0]
     m = COUNTRY_CODE_RE.search(head)
     if m:
@@ -117,13 +142,14 @@ def parse_metrics(name: str) -> tuple[int, float, int]:
     return tier, speed_kbps, risk
 
 
-def get_ws_host(p: dict[str, Any]) -> str:
-    ws_opts = p.get("ws-opts")
-    if isinstance(ws_opts, dict):
-        headers = ws_opts.get("headers")
-        if isinstance(headers, dict):
-            return str(headers.get("Host") or headers.get("host") or "").strip()
-    return ""
+def has_blocked_domain(p: dict[str, Any]) -> bool:
+    server = str(p.get("server", "")).lower().strip()
+    sni = str(p.get("servername", "") or p.get("sni", "")).lower().strip()
+    ws_host = get_ws_host(p).lower().strip()
+    for d in (server, sni, ws_host):
+        if d and d.endswith(BLOCKED_SNI_SUFFIXES):
+            return True
+    return False
 
 
 def is_allowed_proxy(p: dict[str, Any], strict: bool = True) -> bool:
@@ -139,14 +165,14 @@ def is_allowed_proxy(p: dict[str, Any], strict: bool = True) -> bool:
 
     name = str(p.get("name", ""))
     server = str(p.get("server", "")).lower().strip()
-    sni = str(p.get("servername", "") or p.get("sni", "")).lower().strip()
     network = str(p.get("network", "tcp")).lower().strip()
 
     if not server:
         return False
 
-    if server.endswith((".ir", ".ru")) or sni.endswith((".ir", ".ru")):
+    if has_blocked_domain(p):
         return False
+
     if BAD_EXIT_RE.search(name):
         return False
 
@@ -161,7 +187,7 @@ def is_allowed_proxy(p: dict[str, Any], strict: bool = True) -> bool:
 
 
 def china_friendliness_tier(p: dict[str, Any]) -> int:
-    """国内直连穿透概率分级（越小越优先）。"""
+    """国内抗封锁与协议兼容性分级（越小越优先）。"""
     ptype = str(p.get("type", "")).lower()
     network = str(p.get("network", "tcp")).lower().strip()
     server = str(p.get("server", "")).strip()
@@ -174,34 +200,33 @@ def china_friendliness_tier(p: dict[str, Any]) -> int:
     except (TypeError, ValueError):
         port = 0
 
-    # 0: Cloudflare Anycast IP 或 CDN 域名 + WS/gRPC + TLS（实测国内连通率最高）
-    if has_tls and network in {"ws", "grpc"}:
-        if is_cf_cdn_ip(server) or sni.endswith((".pages.dev", ".workers.dev")) or ws_host.endswith((".pages.dev", ".workers.dev")):
+    # 0: 独立自定义域名的 WS/gRPC + TLS（非免费子域，走 CDN/TLS 抗封锁稳）
+    if has_tls and network in {"ws", "grpc"} and (not is_ip_literal(server) or is_cf_cdn_ip(server)):
+        if sni or ws_host:
             return 0
-        if not is_ip_literal(server) and (ws_host or sni):
-            return 1
-        if port in STD_TLS_PORTS and (ws_host or sni):
-            return 2
 
-    # 3: VLESS Reality 或标准端口 TLS Trojan/VLESS
-    if (has_reality or (ptype in {"trojan", "vless"} and has_tls)) and port in STD_TLS_PORTS:
+    # 1: VLESS Reality（标准端口，不暴露敏感免费域名）
+    if has_reality and port in STD_TLS_PORTS:
+        return 1
+
+    # 2: 标准端口 Trojan TLS / VLESS TLS
+    if ptype in {"trojan", "vless"} and has_tls and port in STD_TLS_PORTS:
+        return 2
+
+    # 3: 其他 TLS / Reality 节点
+    if has_tls or has_reality:
         return 3
 
-    # 4: 其他 TLS 节点
-    if has_tls or has_reality:
-        return 4
-
-    # 5: Hysteria2
-    return 5
+    # 4: Hysteria2
+    return 4
 
 
 def dedupe_and_rank(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    # 先按国内连通层级（CDN优先）与纯净度，再按测速降序
     ranked = sorted(
         candidates,
         key=lambda p: (
-            china_friendliness_tier(p),
             parse_metrics(str(p.get("name", "")))[0],
+            china_friendliness_tier(p),
             -parse_metrics(str(p.get("name", "")))[1],
             parse_metrics(str(p.get("name", "")))[2],
         ),
@@ -243,7 +268,9 @@ def rename_uri(uri: str, new_name: str) -> str:
         try:
             data = json.loads(base64.b64decode(padded).decode("utf-8", errors="ignore"))
             data["ps"] = new_name
-            encoded = base64.b64encode(json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode("utf-8")).decode("ascii")
+            encoded = base64.b64encode(
+                json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+            ).decode("ascii")
             return f"vmess://{encoded}"
         except Exception:
             return uri
@@ -345,7 +372,6 @@ def main() -> int:
     if not top_proxies:
         top_proxies = dedupe_and_rank([p for p in proxies if isinstance(p, dict)])
 
-    # 先保留原始名称与指标，再将最终节点名称简化为纯国家简写（如 SG 01、US 01）
     country_counter: dict[str, int] = defaultdict(int)
     name_pairs: list[tuple[str, str]] = []
     orig_to_clean: dict[str, str] = {}
@@ -365,8 +391,9 @@ def main() -> int:
         _, speed_kbps, risk = parse_metrics(orig_name)
         risk_str = f"{risk}%" if risk <= 100 else "未知"
         speed_str = f"{speed_kbps / 1024:.1f} MB/s" if speed_kbps >= 1024 else f"{speed_kbps:.0f} KB/s"
-        cdn_tag = "CDN/TLS" if china_friendliness_tier(p) <= 2 else "直连"
-        stats_rows.append((clean_name, ptype, cdn_tag, risk_str, speed_str))
+        tier = china_friendliness_tier(p)
+        mode_tag = "CDN/TLS" if tier == 0 else ("Reality" if tier == 1 else "TLS/其他")
+        stats_rows.append((clean_name, ptype, mode_tag, risk_str, speed_str))
 
     PUBLISH_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -381,21 +408,21 @@ def main() -> int:
     beijing_tz = timezone(timedelta(hours=8))
     now_str = datetime.now(beijing_tz).strftime("%Y-%m-%d %H:%M:%S (北京时间)")
     lines = [
-        "# 精选 Top 20 公益节点状态清单",
+        "# 精选公益节点状态清单 (Top 100)",
         "",
         f"- 最近更新时间：`{now_str}`",
-        f"- 本轮通过初筛节点数：`{len(proxies)}`（过滤兼容后：`{len(strict_candidates)}`）",
+        f"- 本轮通过初筛节点数：`{len(proxies)}`（剔除被阻断免费域名后：`{len(strict_candidates)}`）",
         f"- 精选保留节点数：`{len(top_proxies)}`",
         f"- 已生成订阅：`all.yaml` / `mihomo.yaml` ({'已更新' if has_mihomo else '跳过'}) / `base64.txt` ({'已更新' if has_base64 else '跳过'})",
         "",
         "| 序号 | 节点名称 | 协议 | 类型 | 纯净度(风险值) | 测速 |",
         "| :--- | :--- | :--- | :--- | :--- | :--- |",
     ]
-    for idx, (clean_name, ptype, cdn_tag, risk_str, speed_str) in enumerate(stats_rows, start=1):
-        lines.append(f"| {idx} | {clean_name} | {ptype} | {cdn_tag} | {risk_str} | {speed_str} |")
+    for idx, (clean_name, ptype, mode_tag, risk_str, speed_str) in enumerate(stats_rows, start=1):
+        lines.append(f"| {idx} | {clean_name} | {ptype} | {mode_tag} | {risk_str} | {speed_str} |")
 
     (PUBLISH_DIR / "STATUS.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
-    print(f"精选完成：初筛 {len(proxies)} -> 兼容 {len(strict_candidates)} -> 精选 Top {len(top_proxies)}。")
+    print(f"精选完成：初筛 {len(proxies)} -> 过滤后 {len(strict_candidates)} -> 精选 Top {len(top_proxies)}。")
     return 0
 
 
