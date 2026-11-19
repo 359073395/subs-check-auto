@@ -15,7 +15,7 @@ check-interval: 360
 alive-concurrent: 0
 speed-concurrent: 0
 media-concurrent: 0
-concurrent: 96
+concurrent: 120
 ipv6: false
 
 nameserver:
@@ -23,10 +23,10 @@ nameserver:
   - 8.8.8.8
   - 223.5.5.5
 
-timeout: 4500
+timeout: 4000
 
-# 收集最多 300 个合格加密节点，再由精选脚本过滤掉非加密/高风险/重复IP，保留最优 Top 20
-success-limit: 300
+# 收集更多合格节点池，以便尽量挑满 20 个高纯净且支持 CDN/TLS 抗封锁的国内可用节点
+success-limit: 600
 
 use-last-result: false
 use-history-result: false
@@ -34,7 +34,7 @@ use-history-result: false
 # -----------测速参数-----------
 # 最低速度门槛 256 KB/s，过滤掉过慢的节点
 min-speed: 256
-download-timeout: 8
+download-timeout: 6
 download-mb: 15
 total-speed-limit: 0
 # 使用内置多区域高速 CDN 随机测速地址
