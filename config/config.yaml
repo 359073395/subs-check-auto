@@ -15,7 +15,7 @@ check-interval: 360
 alive-concurrent: 0
 speed-concurrent: 0
 media-concurrent: 0
-concurrent: 64
+concurrent: 96
 ipv6: false
 
 nameserver:
@@ -23,10 +23,10 @@ nameserver:
   - 8.8.8.8
   - 223.5.5.5
 
-timeout: 5000
+timeout: 4500
 
-# 先筛选出最多 80 个合格高速节点，再由后处理脚本按“IP 纯净度 + 速度”优中选优保留 Top 20
-success-limit: 80
+# 收集最多 300 个合格加密节点，再由精选脚本过滤掉非加密/高风险/重复IP，保留最优 Top 20
+success-limit: 300
 
 use-last-result: false
 use-history-result: false
@@ -63,15 +63,14 @@ mihomo-overwrite-url: 'http://127.0.0.1:8199/Mihomo-Rules-CDN.yaml'
 # -----------节点处理-----------
 rename-node: true
 node-prefix: ''
-# 仅保留加密隧道协议（过滤掉 http / socks5 等易被阻断协议）
+# 仅保留抗封锁较强的加密协议（剔除 http / socks5 / 明文 ss）
 node-type:
   - vless
   - trojan
   - hysteria2
   - hy2
   - vmess
-  - ss
-drop-bad-cf-nodes: false
+drop-bad-cf-nodes: true
 enhanced-tag: true
 
 # -----------流媒体与纯净度检测（默认配置 + IP 纯净度）-----------
@@ -97,11 +96,10 @@ sub-url-max-size-mb: 50
 net-guard: false
 success-rate: 0
 
-# -----------公益节点订阅源-----------
+# -----------公益节点订阅源（聚焦中文社区高质量/CDN 节点池，剔除易被墙的扫描裸 IP 池）-----------
 sub-urls-remote:
   - 'https://raw.githubusercontent.com/sinspired/airport/main/subs/merged/col.txt'
   - 'https://raw.githubusercontent.com/sinspired/airport/main/subs/merged/cm.txt'
-  - 'https://raw.githubusercontent.com/sinspired/airport/main/subs/merged/scan.txt'
 
 sub-urls:
   - 'https://free.datiya.com/uploads/{Ymd}-clash.yaml'
@@ -125,21 +123,13 @@ sub-urls:
   - 'https://raw.githubusercontent.com/free18/v2ray/main/c.yaml'
   - 'https://raw.githubusercontent.com/peasoft/NoMoreWalls/master/list.yml'
   - 'https://raw.githubusercontent.com/Ruk1ng001/freeSub/main/clash.yaml'
-  - 'https://raw.githubusercontent.com/SoliSpirit/v2ray-configs/main/all_configs.txt'
   - 'https://raw.githubusercontent.com/ripaojiedian/freenode/main/clash'
   - 'https://raw.githubusercontent.com/go4sharing/sub/main/sub.yaml'
   - 'https://raw.githubusercontent.com/actionsfz/v2ray/master/all.yaml'
   - 'https://raw.githubusercontent.com/Pawdroid/Free-servers/main/sub'
   - 'https://raw.githubusercontent.com/acymz/AutoVPN/main/data/V2.txt'
-  - 'https://raw.githubusercontent.com/Barabama/FreeNodes/main/nodes/wenode.txt'
-  - 'https://raw.githubusercontent.com/Barabama/FreeNodes/main/nodes/v2rayshare.txt'
-  - 'https://raw.githubusercontent.com/Barabama/FreeNodes/main/nodes/nodefree.txt'
-  - 'https://raw.githubusercontent.com/Barabama/FreeNodes/main/nodes/ndnode.txt'
-  - 'https://raw.githubusercontent.com/Barabama/FreeNodes/main/nodes/clashmeta.txt'
   - 'https://raw.githubusercontent.com/xiaoji235/airport-free/main/v2ray/v2rayshare.txt'
   - 'https://raw.githubusercontent.com/xiaoji235/airport-free/main/v2ray.txt'
-  - 'https://raw.githubusercontent.com/mheidari98/.proxy/main/all'
-  - 'https://raw.githubusercontent.com/ALIILAPRO/v2rayNG-Config/main/sub.txt'
   - 'https://raw.githubusercontent.com/PangTouY00/Auto_proxy/main/Long_term_subscription_num'
   - 'https://raw.githubusercontent.com/mahdibland/V2RayAggregator/master/sub/sub_merge_yaml.yml'
   - 'https://raw.githubusercontent.com/Misaka-blog/chromego_merge/main/sub/merged_proxies_new.yaml'
