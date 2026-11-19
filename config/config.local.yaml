@@ -1,0 +1,144 @@
+# subs-check-pro Windows 本地真实网络检测配置
+# 直接从本机国内宽带测活测速，确保选出的节点 100% 在本机可用
+
+# -----------进度显示-----------
+print-progress: true
+progress-mode: 'auto'
+
+# -----------计划任务-----------
+cron-expression: ''
+check-interval: 360
+
+# -----------检测参数（适配家用宽带，避免路由器连接数打满）-----------
+alive-concurrent: 120
+speed-concurrent: 6
+media-concurrent: 30
+concurrent: 48
+ipv6: false
+
+nameserver:
+  - 223.5.5.5
+  - 119.29.29.29
+  - 8.8.8.8
+
+proxy-server-nameserver:
+  - https://dns.alidns.com/dns-query
+  - 223.5.5.5
+
+timeout: 4000
+
+# 收集最多 40 个本机真可用高速加密节点，随后精选纯净度最高、速度最快的 Top 20
+success-limit: 40
+
+use-last-result: false
+use-history-result: false
+
+# -----------测速参数-----------
+min-speed: 200
+download-timeout: 6
+download-mb: 10
+total-speed-limit: 0
+speed-test-url: 'random'
+
+threshold: 0.75
+gc-threshold: 20000
+
+# -----------版本更新-----------
+update: false
+update-on-startup: false
+prerelease: false
+
+# -----------WebUI 与 Sub-Store-----------
+listen-port: ':18199'
+enable-web-ui: false
+api-key: 'local-runner'
+share-password: ''
+
+sub-store-port: ':18299'
+sub-store-path: '/substore'
+sub-store-update-notify: false
+mihomo-overwrite-url: 'http://127.0.0.1:18199/Mihomo-Rules-CDN.yaml'
+
+# -----------节点处理-----------
+rename-node: true
+node-prefix: ''
+node-type:
+  - vless
+  - trojan
+  - hysteria2
+  - hy2
+  - vmess
+  - ss
+drop-bad-cf-nodes: false
+enhanced-tag: true
+
+# -----------流媒体与纯净度检测-----------
+media-check: true
+media-check-timeout: 6
+platforms:
+  - iprisk
+  - youtube
+  - x
+
+# -----------存储与回调-----------
+output-dir: './output'
+save-method: 'local'
+callback-script: 'scripts\on_check_done.bat'
+
+# -----------通知设置（已关闭）-----------
+recipient-url: []
+
+# -----------国内拉取订阅 GitHub 镜像加速（即使本机没挂代理也能拉取）-----------
+github-proxy: ''
+ghproxy-group:
+  - https://gh-proxy.com/
+  - https://ghfast.top/
+  - https://hk.gh-proxy.org/
+  - https://cdn.gh-proxy.org/
+  - https://github.732086.xyz/
+  - https://github.180280.xyz/
+
+# -----------订阅拉取参数-----------
+sub-urls-retry: 2
+sub-urls-timeout: 12
+sub-url-max-size-mb: 50
+net-guard: true
+success-rate: 0
+
+# -----------公益节点订阅源-----------
+sub-urls-remote:
+  - 'https://raw.githubusercontent.com/sinspired/airport/main/subs/merged/col.txt'
+  - 'https://raw.githubusercontent.com/sinspired/airport/main/subs/merged/cm.txt'
+
+sub-urls:
+  - 'https://free.datiya.com/uploads/{Ymd}-clash.yaml'
+  - 'https://node.freeclashnode.com/uploads/{Y}/{mm}/0-{Ymd}.yaml'
+  - 'https://node.freeclashnode.com/uploads/{Y}/{mm}/1-{Ymd}.yaml'
+  - 'https://node.freeclashnode.com/uploads/{Y}/{mm}/2-{Ymd}.yaml'
+  - 'https://node.freeclashnode.com/uploads/{Y}/{mm}/3-{Ymd}.yaml'
+  - 'https://node.freeclashnode.com/uploads/{Y}/{mm}/4-{Ymd}.yaml'
+  - 'https://raw.githubusercontent.com/free-nodes/v2rayfree/main/v{ymd}1'
+  - 'https://raw.githubusercontent.com/free-nodes/v2rayfree/main/v{ymd}2'
+  - 'https://raw.githubusercontent.com/free-nodes/clashfree/main/clash{Ymd}.yml'
+  - 'https://raw.githubusercontent.com/firefoxmmx2/v2rayshare_subcription/main/subscription/clash_sub.yaml'
+  - 'https://raw.githubusercontent.com/xiaoji235/airport-free/main/clash/naidounode.txt'
+  - 'https://raw.githubusercontent.com/mahdibland/SSAggregator/master/sub/sub_merge_yaml.yml'
+  - 'https://raw.githubusercontent.com/chengaopan/AutoMergePublicNodes/master/list.yml'
+  - 'https://raw.githubusercontent.com/zhangkaiitugithub/passcro/main/speednodes.yaml'
+  - 'https://raw.githubusercontent.com/aiboboxx/v2rayfree/main/README.md'
+  - 'https://raw.githubusercontent.com/peasoft/NoMoreWalls/master/snippets/nodes.meta.yml'
+  - 'https://raw.githubusercontent.com/peasoft/NoMoreWalls/master/list.meta.yml'
+  - 'https://raw.githubusercontent.com/anaer/Sub/main/clash.yaml'
+  - 'https://raw.githubusercontent.com/free18/v2ray/main/c.yaml'
+  - 'https://raw.githubusercontent.com/peasoft/NoMoreWalls/master/list.yml'
+  - 'https://raw.githubusercontent.com/Ruk1ng001/freeSub/main/clash.yaml'
+  - 'https://raw.githubusercontent.com/ripaojiedian/freenode/main/clash'
+  - 'https://raw.githubusercontent.com/go4sharing/sub/main/sub.yaml'
+  - 'https://raw.githubusercontent.com/actionsfz/v2ray/master/all.yaml'
+  - 'https://raw.githubusercontent.com/Pawdroid/Free-servers/main/sub'
+  - 'https://raw.githubusercontent.com/acymz/AutoVPN/main/data/V2.txt'
+  - 'https://raw.githubusercontent.com/xiaoji235/airport-free/main/v2ray/v2rayshare.txt'
+  - 'https://raw.githubusercontent.com/xiaoji235/airport-free/main/v2ray.txt'
+  - 'https://raw.githubusercontent.com/PangTouY00/Auto_proxy/main/Long_term_subscription_num'
+  - 'https://raw.githubusercontent.com/mahdibland/V2RayAggregator/master/sub/sub_merge_yaml.yml'
+  - 'https://raw.githubusercontent.com/Misaka-blog/chromego_merge/main/sub/merged_proxies_new.yaml'

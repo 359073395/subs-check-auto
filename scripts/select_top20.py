@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """
-从 subs-check-pro 输出的可用节点中：
-1. 剔除明文协议、易被阻断协议（http/socks5/ss/非TLS vmess）与异常出口；
-2. 剔除在国内大概率触发 SNI 阻断的公开免费域名（pages.dev/workers.dev/dpdns.org/de5.net 等）；
-3. 按 IP 纯净度 + 协议稳定性（独立域名 CDN/TLS、VLESS Reality、Trojan）+ 速度精选 Top 100；
-4. 按 IP/网段去重，避免同机房节点占满名额，并将名称简化为纯国家简写（如 US 01、SG 01）。
+从 subs-check-pro 输出的可用节点中筛选并排序，输出干净的 Mihomo / Base64 / YAML 订阅。
+- 云端模式（默认）：剔除国内易被 SNI 阻断的免费域名与明文协议，保留最多 100 个。
+- 本地模式（--local --top 20）：完全信任本机国内真实宽带实测结果，仅过滤 http/socks5 与劣质出口，精选 Top 20。
 """
 
 from __future__ import annotations
 
+import argparse
 import base64
 import ipaddress
 import json
@@ -21,7 +20,6 @@ from typing import Any
 
 import yaml
 
-TOP_N = 100
 OUTPUT_SUB_DIR = Path("output/sub")
 PUBLISH_DIR = Path("subs")
 
@@ -31,7 +29,6 @@ BAD_EXIT_RE = re.compile(r"YT-(?:IR|RU|CN|PK|EG)\b", re.IGNORECASE)
 COUNTRY_CODE_RE = re.compile(r"([A-Z]{2})(?=[¹²³⁰ˣ_\|\s]|$)")
 STD_TLS_PORTS = {443, 2053, 2083, 2087, 2096, 8443}
 
-# 在国内实测大面积被 SNI 重置/阻断的公开免费代理域名后缀
 BLOCKED_SNI_SUFFIXES = (
     ".pages.dev",
     ".workers.dev",
@@ -44,7 +41,6 @@ BLOCKED_SNI_SUFFIXES = (
     ".ru",
 )
 
-# Cloudflare 常见 Anycast 与 SaaS CDN IPv4 网段
 CF_CIDRS = [
     ipaddress.ip_network(c)
     for c in (
@@ -142,25 +138,29 @@ def parse_metrics(name: str) -> tuple[int, float, int]:
     return tier, speed_kbps, risk
 
 
-def has_blocked_domain(p: dict[str, Any]) -> bool:
+def has_blocked_domain(p: dict[str, Any], local_mode: bool) -> bool:
     server = str(p.get("server", "")).lower().strip()
     sni = str(p.get("servername", "") or p.get("sni", "")).lower().strip()
     ws_host = get_ws_host(p).lower().strip()
+    # 本地模式下如果已经实测跑通，仅屏蔽 .ir/.ru 域；云端模式屏蔽全部易被 SNI 阻断免费域名
+    suffixes = (".ir", ".ru") if local_mode else BLOCKED_SNI_SUFFIXES
     for d in (server, sni, ws_host):
-        if d and d.endswith(BLOCKED_SNI_SUFFIXES):
+        if d and d.endswith(suffixes):
             return True
     return False
 
 
-def is_allowed_proxy(p: dict[str, Any], strict: bool = True) -> bool:
+def is_allowed_proxy(p: dict[str, Any], strict: bool = True, local_mode: bool = False) -> bool:
     ptype = str(p.get("type", "")).lower()
-    if ptype in {"http", "https", "socks5", "socks", "ss", "ssr"}:
+    if ptype in {"http", "https", "socks5", "socks", "ssr"}:
+        return False
+    if not local_mode and ptype == "ss":
         return False
 
-    if ptype == "vmess" and not p.get("tls"):
+    if ptype == "vmess" and not p.get("tls") and not local_mode:
         return False
 
-    if ptype == "vless" and not p.get("tls") and not p.get("reality-opts"):
+    if ptype == "vless" and not p.get("tls") and not p.get("reality-opts") and not local_mode:
         return False
 
     name = str(p.get("name", ""))
@@ -170,7 +170,7 @@ def is_allowed_proxy(p: dict[str, Any], strict: bool = True) -> bool:
     if not server:
         return False
 
-    if has_blocked_domain(p):
+    if has_blocked_domain(p, local_mode=local_mode):
         return False
 
     if BAD_EXIT_RE.search(name):
@@ -187,7 +187,6 @@ def is_allowed_proxy(p: dict[str, Any], strict: bool = True) -> bool:
 
 
 def china_friendliness_tier(p: dict[str, Any]) -> int:
-    """国内抗封锁与协议兼容性分级（越小越优先）。"""
     ptype = str(p.get("type", "")).lower()
     network = str(p.get("network", "tcp")).lower().strip()
     server = str(p.get("server", "")).strip()
@@ -200,37 +199,35 @@ def china_friendliness_tier(p: dict[str, Any]) -> int:
     except (TypeError, ValueError):
         port = 0
 
-    # 0: 独立自定义域名的 WS/gRPC + TLS（非免费子域，走 CDN/TLS 抗封锁稳）
     if has_tls and network in {"ws", "grpc"} and (not is_ip_literal(server) or is_cf_cdn_ip(server)):
         if sni or ws_host:
             return 0
-
-    # 1: VLESS Reality（标准端口，不暴露敏感免费域名）
     if has_reality and port in STD_TLS_PORTS:
         return 1
-
-    # 2: 标准端口 Trojan TLS / VLESS TLS
     if ptype in {"trojan", "vless"} and has_tls and port in STD_TLS_PORTS:
         return 2
-
-    # 3: 其他 TLS / Reality 节点
     if has_tls or has_reality:
         return 3
-
-    # 4: Hysteria2
     return 4
 
 
-def dedupe_and_rank(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    ranked = sorted(
-        candidates,
-        key=lambda p: (
+def dedupe_and_rank(candidates: list[dict[str, Any]], top_n: int, local_mode: bool) -> list[dict[str, Any]]:
+    if local_mode:
+        # 本地已实测真实连通性，直接按“IP 纯净度优先 + 测速最快”排序
+        key_fn = lambda p: (
+            parse_metrics(str(p.get("name", "")))[0],
+            -parse_metrics(str(p.get("name", "")))[1],
+            parse_metrics(str(p.get("name", "")))[2],
+        )
+    else:
+        key_fn = lambda p: (
             parse_metrics(str(p.get("name", "")))[0],
             china_friendliness_tier(p),
             -parse_metrics(str(p.get("name", "")))[1],
             parse_metrics(str(p.get("name", "")))[2],
-        ),
-    )
+        )
+
+    ranked = sorted(candidates, key=key_fn)
 
     selected: list[dict[str, Any]] = []
     seen_keys: set[str] = set()
@@ -240,7 +237,7 @@ def dedupe_and_rank(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
             continue
         seen_keys.add(key)
         selected.append(p)
-        if len(selected) >= TOP_N:
+        if len(selected) >= top_n:
             break
     return selected
 
@@ -349,6 +346,14 @@ def filter_mihomo(top_proxies: list[dict[str, Any]], orig_to_clean: dict[str, st
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--top", type=int, default=100)
+    parser.add_argument("--local", action="store_true", help="本机国内网络实测模式")
+    args = parser.parse_args()
+
+    top_n = args.top
+    local_mode = args.local
+
     all_yaml_path = OUTPUT_SUB_DIR / "all.yaml"
     if not all_yaml_path.exists():
         print("未找到 output/sub/all.yaml，跳过本轮精选。")
@@ -360,17 +365,24 @@ def main() -> int:
         print("本轮可用节点为空，保留已有订阅文件。")
         return 0
 
-    strict_candidates = [p for p in proxies if isinstance(p, dict) and is_allowed_proxy(p, strict=True)]
-    top_proxies = dedupe_and_rank(strict_candidates)
+    strict_candidates = [
+        p for p in proxies if isinstance(p, dict) and is_allowed_proxy(p, strict=True, local_mode=local_mode)
+    ]
+    top_proxies = dedupe_and_rank(strict_candidates, top_n, local_mode=local_mode)
 
-    if len(top_proxies) < TOP_N:
-        relaxed_candidates = [p for p in proxies if isinstance(p, dict) and is_allowed_proxy(p, strict=False)]
+    if len(top_proxies) < top_n:
+        relaxed_candidates = [
+            p for p in proxies if isinstance(p, dict) and is_allowed_proxy(p, strict=False, local_mode=local_mode)
+        ]
         used_keys = {server_dedupe_key(p) for p in top_proxies}
-        extra = [p for p in dedupe_and_rank(relaxed_candidates) if server_dedupe_key(p) not in used_keys]
-        top_proxies.extend(extra[: TOP_N - len(top_proxies)])
+        extra = [
+            p for p in dedupe_and_rank(relaxed_candidates, top_n, local_mode=local_mode)
+            if server_dedupe_key(p) not in used_keys
+        ]
+        top_proxies.extend(extra[: top_n - len(top_proxies)])
 
     if not top_proxies:
-        top_proxies = dedupe_and_rank([p for p in proxies if isinstance(p, dict)])
+        top_proxies = dedupe_and_rank([p for p in proxies if isinstance(p, dict)], top_n, local_mode=local_mode)
 
     country_counter: dict[str, int] = defaultdict(int)
     name_pairs: list[tuple[str, str]] = []
@@ -391,8 +403,7 @@ def main() -> int:
         _, speed_kbps, risk = parse_metrics(orig_name)
         risk_str = f"{risk}%" if risk <= 100 else "未知"
         speed_str = f"{speed_kbps / 1024:.1f} MB/s" if speed_kbps >= 1024 else f"{speed_kbps:.0f} KB/s"
-        tier = china_friendliness_tier(p)
-        mode_tag = "CDN/TLS" if tier == 0 else ("Reality" if tier == 1 else "TLS/其他")
+        mode_tag = "本机实测" if local_mode else ("CDN/TLS" if china_friendliness_tier(p) == 0 else "TLS/其他")
         stats_rows.append((clean_name, ptype, mode_tag, risk_str, speed_str))
 
     PUBLISH_DIR.mkdir(parents=True, exist_ok=True)
@@ -407,15 +418,17 @@ def main() -> int:
 
     beijing_tz = timezone(timedelta(hours=8))
     now_str = datetime.now(beijing_tz).strftime("%Y-%m-%d %H:%M:%S (北京时间)")
+    source_label = "Windows 本机国内真实网络实测" if local_mode else "GitHub Actions 云端检测"
     lines = [
-        "# 精选公益节点状态清单 (Top 100)",
+        f"# 精选公益节点状态清单 (Top {len(top_proxies)})",
         "",
+        f"- 检测来源：`{source_label}`",
         f"- 最近更新时间：`{now_str}`",
-        f"- 本轮通过初筛节点数：`{len(proxies)}`（剔除被阻断免费域名后：`{len(strict_candidates)}`）",
+        f"- 本轮通过初筛节点数：`{len(proxies)}`（过滤兼容后：`{len(strict_candidates)}`）",
         f"- 精选保留节点数：`{len(top_proxies)}`",
         f"- 已生成订阅：`all.yaml` / `mihomo.yaml` ({'已更新' if has_mihomo else '跳过'}) / `base64.txt` ({'已更新' if has_base64 else '跳过'})",
         "",
-        "| 序号 | 节点名称 | 协议 | 类型 | 纯净度(风险值) | 测速 |",
+        "| 序号 | 节点名称 | 协议 | 来源 | 纯净度(风险值) | 测速 |",
         "| :--- | :--- | :--- | :--- | :--- | :--- |",
     ]
     for idx, (clean_name, ptype, mode_tag, risk_str, speed_str) in enumerate(stats_rows, start=1):

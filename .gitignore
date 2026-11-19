@@ -1,4 +1,5 @@
 output/
+bin/
 *.exe
 subs-check-pro
 GeoLite2-Country.mmdb
