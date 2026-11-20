@@ -118,6 +118,46 @@ class PublicationTests(unittest.TestCase):
         proxy = {"type": "ss", "server": "example.com", "cipher": "aes-256-cfb"}
         self.assertFalse(select.is_allowed_proxy(proxy, strict=False, local_mode=True))
 
+    def test_verified_latency_ranks_nodes_with_equal_risk(self):
+        with patch.object(select, "verify_links", return_value=[
+            {"name": self.proxies[0]["name"], "ok": True, "https_latency_ms": 800},
+            {"name": self.proxies[1]["name"], "ok": True, "https_latency_ms": 120}]):
+            self.assertEqual(self.run_select(["--top", "1"]), 0)
+        nodes = yaml.safe_load((self.published / "all.yaml").read_text())["proxies"]
+        self.assertEqual(nodes[0]["server"], self.proxies[1]["server"])
+        self.assertIn("120 ms", (self.published / "STATUS.md").read_text(encoding="utf-8"))
+
+    def test_unmeasured_bandwidth_is_not_reported_as_zero(self):
+        for index, proxy in enumerate(self.proxies):
+            proxy["name"] = f"US {index + 1}|0%"
+            self.links[index] = select.rename_uri(self.links[index], proxy["name"])
+        self.write_input()
+        with patch.object(select, "verify_links", return_value=[
+            {"name": p["name"], "ok": True, "https_latency_ms": 100} for p in self.proxies]):
+            self.assertEqual(self.run_select(), 0)
+        status = (self.published / "STATUS.md").read_text(encoding="utf-8")
+        self.assertIn("未测速", status)
+        self.assertNotIn("0.00 MB/s", status)
+
+    def test_failed_address_does_not_suppress_working_address_in_same_subnet(self):
+        self.proxies[1]["server"] = "203.0.1.2"
+        self.links[1] = self.links[1].replace("203.0.2.1", "203.0.1.2")
+        self.write_input()
+        with patch.object(select, "verify_links", return_value=[
+            {"name": self.proxies[0]["name"], "ok": False},
+            {"name": self.proxies[1]["name"], "ok": True, "https_latency_ms": 100}]):
+            self.assertEqual(self.run_select(), 0)
+        nodes = yaml.safe_load((self.published / "all.yaml").read_text())["proxies"]
+        self.assertEqual(nodes[0]["server"], "203.0.1.2")
+
+    def test_verified_exit_country_is_used_for_clean_name(self):
+        with patch.object(select, "verify_links", return_value=[
+            {"name": self.proxies[0]["name"], "ok": True, "https_latency_ms": 100, "exit_country": "SG"},
+            {"name": self.proxies[1]["name"], "ok": False}]):
+            self.assertEqual(self.run_select(), 0)
+        nodes = yaml.safe_load((self.published / "all.yaml").read_text())["proxies"]
+        self.assertEqual(nodes[0]["name"], "SG 01")
+
 
 class ShareLinkTests(unittest.TestCase):
     def test_callback_records_single_digit_counts_atomically(self):

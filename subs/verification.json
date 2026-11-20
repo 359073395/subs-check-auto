@@ -1,25 +1,38 @@
 {
-  "checked_at": "2026-11-20T17:03:54.786580+08:00",
-  "collection_started_at": 1795164540.987178,
+  "checked_at": "2026-11-20T17:41:14.503501+08:00",
+  "collection_started_at": 1795167428.30807,
   "source": "本机 sing-box 导出链接复测",
   "verified": true,
-  "count": 2,
-  "tested_count": 2,
+  "count": 3,
+  "tested_count": 12,
   "nodes": [
     {
-      "name": "SG 01",
+      "name": "NL 01",
       "ok": true,
-      "exit_ip": "31.58.117.133",
-      "elapsed_ms": 4484,
-      "link_sha256": "70e8062e739475ced0a81d6feef54616fd1fee361327fec0853640bc53201ad0"
+      "exit_ip": "81.90.29.98",
+      "exit_country": "NL",
+      "https_latency_ms": 4195,
+      "elapsed_ms": 12031,
+      "link_sha256": "596b241a72fe701e0e3c3f7c714b9e906cf906684000ef573e2404dc8c4c32e2"
     },
     {
-      "name": "EE 01",
+      "name": "IT 01",
       "ok": true,
-      "exit_ip": "45.83.181.223",
-      "elapsed_ms": 17296,
-      "link_sha256": "ffbf9a71a4b2cd6ab3ef22bf4052c89aa098df901b95bf917bcd429c8c3979a7"
+      "exit_ip": "80.174.118.24",
+      "exit_country": "IT",
+      "https_latency_ms": 1374,
+      "elapsed_ms": 3860,
+      "link_sha256": "1f9e17c62d375521c6050a324d6cd43b3dce6291796efcb508c365475891d210"
+    },
+    {
+      "name": "FR 01",
+      "ok": true,
+      "exit_ip": "51.255.37.164",
+      "exit_country": "FR",
+      "https_latency_ms": 1054,
+      "elapsed_ms": 4610,
+      "link_sha256": "68c60efdb3e32ce8324414727d3a1b321a7fe7ee0a460924fc69ea6cfa335278"
     }
   ],
-  "subscription_sha256": "18e7947ed5c9354a4e8b056016947198a0bd315b0c389c701327e76cd80fb1f3"
+  "subscription_sha256": "a668ba7b35f8dd7f3277b57daef539ed312c898605c84beeccf0ca7c6c18ad1e"
 }

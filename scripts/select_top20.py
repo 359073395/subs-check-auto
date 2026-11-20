@@ -224,7 +224,8 @@ def china_friendliness_tier(p: dict[str, Any]) -> int:
     return 4
 
 
-def dedupe_and_rank(candidates: list[dict[str, Any]], top_n: int, local_mode: bool) -> list[dict[str, Any]]:
+def dedupe_and_rank(candidates: list[dict[str, Any]], top_n: int, local_mode: bool,
+                    diverse: bool = True) -> list[dict[str, Any]]:
     if local_mode:
         # 本地已实测真实连通性，直接按“IP 纯净度优先 + 测速最快”排序
         key_fn = lambda p: (
@@ -245,7 +246,8 @@ def dedupe_and_rank(candidates: list[dict[str, Any]], top_n: int, local_mode: bo
     selected: list[dict[str, Any]] = []
     seen_keys: set[str] = set()
     for p in ranked:
-        key = server_dedupe_key(p)
+        key = server_dedupe_key(p) if diverse else json.dumps(
+            {k: v for k, v in p.items() if k != "name"}, sort_keys=True, default=str)
         if key in seen_keys:
             continue
         seen_keys.add(key)
@@ -362,7 +364,8 @@ def main() -> int:
             continue
         uri_by_name[name] = uri
         candidates.append(p)
-    ranked = dedupe_and_rank(candidates, max(len(candidates), 1), local_mode=args.local)
+    ranked = dedupe_and_rank(candidates, max(len(candidates), 1), local_mode=args.local,
+                             diverse=not args.local)
     reports = []
     passed = []
     if args.local:
@@ -376,7 +379,7 @@ def main() -> int:
                 print(p["name"], "PASS" if check["ok"] else "FAIL: " + check.get("error", "verification failed"), flush=True)
                 if check["ok"]:
                     passed.append((p, check))
-            if len(passed) >= args.top:
+            if len({server_dedupe_key(p) for p, _ in passed}) >= args.top:
                 break
     else:
         passed = [(p, None) for p in ranked]
@@ -386,6 +389,21 @@ def main() -> int:
     if not passed:
         print("FAILED: no exported links passed; published subscriptions were not updated")
         return 1
+    if args.local:
+        passed.sort(key=lambda pair: (
+            parse_metrics(str(pair[0].get("name", "")))[0],
+            pair[1].get("https_latency_ms", float("inf")),
+        ))
+        # Apply network diversity after verification, so one failed address cannot
+        # suppress every other address in the same subnet.
+        diverse_passed = []
+        seen_networks = set()
+        for pair in passed:
+            key = server_dedupe_key(pair[0])
+            if key not in seen_networks:
+                diverse_passed.append(pair)
+                seen_networks.add(key)
+        passed = diverse_passed
     passed = passed[:args.top]
 
     country_counter = defaultdict(int)
@@ -396,6 +414,8 @@ def main() -> int:
     for p, check in passed:
         original = p["name"]
         code = extract_country_code(original)
+        if check and re.fullmatch(r"[A-Z]{2}", check.get("exit_country", "")):
+            code = check["exit_country"]
         country_counter[code] += 1
         clean = f"{code} {country_counter[code]:02d}"
         p["name"] = clean
@@ -403,7 +423,9 @@ def main() -> int:
         top_proxies.append(p)
         links.append(uri)
         _, speed, risk = parse_metrics(original)
-        stats_rows.append((clean, p["type"], f"{risk}%" if risk <= 100 else "未知", f"{speed / 1024:.2f} MB/s"))
+        speed_label = f"{speed / 1024:.2f} MB/s" if speed > 0 else "未测速"
+        latency_label = f"{check['https_latency_ms']} ms" if check and "https_latency_ms" in check else "未记录"
+        stats_rows.append((clean, p["type"], f"{risk}%" if risk <= 100 else "未知", speed_label, latency_label))
         if check:
             public_checks.append({**check, "name": clean,
                 "link_sha256": hashlib.sha256(uri.encode()).hexdigest()})
@@ -418,11 +440,12 @@ def main() -> int:
         "- 发布条件：独立内核通过两次 Google HTTPS 204 和一次 Cloudflare HTTPS 出口检查。" if args.local
         else "- 此目录仅保存云端候选，不能覆盖正式订阅。",
         "- 结果仅代表检测当时的本机网络；公益节点可能随时失效。",
+        "- HTTPS 延迟为两次 Google HTTPS 204 请求的平均耗时；下载带宽不作为本地发布门槛。" if args.local else "- 云端测速仅供参考。",
         "- Mihomo 使用无需远程数据库的基础分流；v2rayN / Shadowrocket 使用 base64.txt。", "",
-        "| 节点 | 协议 | IP 风险参考 | 采集测速参考 |",
-        "| --- | --- | --- | --- |",
+        "| 节点 | 协议 | IP 风险参考 | 采集测速参考 | HTTPS 延迟 |",
+        "| --- | --- | --- | --- | --- |",
     ]
-    lines.extend(f"| {name} | {kind} | {risk} | {speed} |" for name, kind, risk, speed in stats_rows)
+    lines.extend(f"| {name} | {kind} | {risk} | {speed} | {latency} |" for name, kind, risk, speed, latency in stats_rows)
     verification = {"checked_at": now.isoformat(), "collection_started_at": args.started_at,
                     "source": source, "verified": args.local, "count": len(top_proxies),
                     "tested_count": len(reports), "nodes": public_checks,

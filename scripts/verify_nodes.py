@@ -157,6 +157,7 @@ def verify_link(uri: str, core: Path, timeout: float = 10) -> dict:
                             time.sleep(.05)
                     else:
                         raise TimeoutError("core startup timeout")
+                    https_latencies = []
                     for target, status in [("https://www.gstatic.com/generate_204", 204),
                                            ("https://www.cloudflare.com/cdn-cgi/trace", 200),
                                            ("https://www.gstatic.com/generate_204", 204)]:
@@ -165,20 +166,26 @@ def verify_link(uri: str, core: Path, timeout: float = 10) -> dict:
                         connection = http.client.HTTPSConnection("127.0.0.1", port, timeout=timeout,
                                                                  context=ssl.create_default_context())
                         connection.set_tunnel(target_url.hostname, 443)
+                        probe_started = time.monotonic()
                         try:
                             connection.request("GET", target_url.path, headers={"User-Agent": "subs-local-verify/1"})
                             response = connection.getresponse()
                             body = response.read(16384)
                             if response.status != status or (status == 204 and body):
                                 raise RuntimeError("unexpected HTTPS response")
+                            if status == 204:
+                                https_latencies.append((time.monotonic() - probe_started) * 1000)
                             if status == 200:
                                 fields = dict(line.split("=", 1) for line in body.decode().splitlines() if "=" in line)
                                 exit_ip = ipaddress.ip_address(fields["ip"])
                                 if not exit_ip.is_global or not fields.get("colo"):
                                     raise RuntimeError("invalid exit-IP response")
                                 report["exit_ip"] = str(exit_ip)
+                                if fields.get("loc", "").isalpha() and len(fields["loc"]) == 2:
+                                    report["exit_country"] = fields["loc"].upper()
                         finally:
                             connection.close()
+                    report["https_latency_ms"] = round(sum(https_latencies) / len(https_latencies))
                     report["ok"] = True
                 finally:
                     process.terminate()

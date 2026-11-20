@@ -10,9 +10,9 @@ cron-expression: ''
 check-interval: 360
 
 # -----------检测参数（适配家用宽带，避免路由器连接数打满）-----------
-alive-concurrent: 120
-speed-concurrent: 6
-media-concurrent: 30
+alive-concurrent: 10
+speed-concurrent: 2
+media-concurrent: 10
 concurrent: 48
 ipv6: false
 
@@ -25,20 +25,21 @@ proxy-server-nameserver:
   - https://dns.alidns.com/dns-query
   - 223.5.5.5
 
-timeout: 4000
+timeout: 10000
 
-# 收集最多 40 个本机真可用高速加密节点，随后精选纯净度最高、速度最快的 Top 20
+# 收集最多 40 个可连接候选，发布前用独立内核复测真实 HTTPS 请求
 success-limit: 40
 
 use-last-result: false
 use-history-result: false
 
-# -----------测速参数-----------
-min-speed: 200
+# -----------下载测速（本地默认关闭，不以下载带宽淘汰可用节点）-----------
+# 随机下载站失败或限速不等于节点不可用；最终按 HTTPS 复测与延迟筛选
+min-speed: 0
 download-timeout: 6
 download-mb: 10
 total-speed-limit: 0
-speed-test-url: 'random'
+speed-test-url: ''
 
 threshold: 0.75
 gc-threshold: 20000

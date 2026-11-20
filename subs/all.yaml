@@ -1,19 +1,41 @@
 proxies:
-- auth: ca60984f-b1f0-4073-bd33-4c75168f749a
-  name: SG 01
-  password: ca60984f-b1f0-4073-bd33-4c75168f749a
+- client-fingerprint: firefox
+  encryption: none
+  grpc-opts:
+    grpc-service-name: 5b79e8a94241
+  name: NL 01
+  network: grpc
   port: 443
-  server: 31.58.117.133
-  skip-cert-verify: true
-  sni: kraw-pl-5.fantoff.online
-  type: hysteria2
-- client-fingerprint: qq
-  name: EE 01
-  network: tcp
-  port: 443
-  server: 136.148.83.69
-  servername: szqbx-ru-77dc.my-fade.cloud
+  reality-opts:
+    public-key: zbz--PMjcIC4Ggr3j-ibDf0fzXRTj0lM_HzjPJyMkVE
+    short-id: 50a749f0eccb628c
+  server: 196.245.52.183
+  servername: 15b171g.nl7.h1clayd.click
   tls: true
   type: vless
   udp: true
-  uuid: 666821a2-5c3d-0001-a56f-5a3a562d7324
+  uuid: cda0862a-0f87-4be9-8ed8-1d0c9e382839
+  xudp: true
+- cipher: aes-256-gcm
+  name: IT 01
+  password: ZRpgaBeGxtENIXgvhpkZBKz9GnWRS2dYcx9O+a2iwN4=
+  port: 19999
+  server: 202.50.253.27
+  type: ss
+  udp: true
+- client-fingerprint: chrome
+  encryption: none
+  flow: xtls-rprx-vision
+  name: FR 01
+  network: tcp
+  port: 443
+  reality-opts:
+    public-key: SbVKOEMjK0sIlbwg4akyBg5mL5KZwwB-ed4eEE7YnRc
+    short-id: ''
+  server: 163.245.42.87
+  servername: mother-earth.fyi
+  tls: true
+  type: vless
+  udp: true
+  uuid: b9bfa54d-bc44-4592-a6d6-89a9665d286f
+  xudp: true
