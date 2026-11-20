@@ -1,0 +1,14 @@
+name: 发布保护检查
+on:
+  push:
+    paths: ['scripts/**', 'tests/**', 'config/**', '.github/workflows/**']
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -m pip install --quiet 'PyYAML>=6,<7'
+      - run: python3 -m unittest discover -s tests -v

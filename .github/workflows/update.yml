@@ -1,50 +1,42 @@
-name: 自动采集测速并更新 Top 20 订阅
+name: 云端采集候选（不覆盖本地订阅）
 
 on:
-  # 已切换为“Windows 本机国内真实网络实测 + 推送云端”模式，关闭云端定时以免覆盖本机精选节点
-  # 如需临时用 GitHub 云端运行，可在 Actions 页面手动点击 Run workflow
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: cloud-candidates
+  cancel-in-progress: false
 
 jobs:
-  update-subs:
+  collect:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-
     steps:
       - name: 检出仓库
         uses: actions/checkout@v4
-
-      - name: 安装 Python YAML 依赖
-        run: python3 -m pip install --quiet pyyaml
-
-      - name: 下载最新版 subs-check-pro (Linux x86_64)
+      - name: 安装依赖并检查发布保护
+        run: |
+          python3 -m pip install --quiet 'PyYAML>=6,<7'
+          python3 -m unittest discover -s tests -v
+      - name: 下载固定版本检测程序
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          gh release download --repo sinspired/subs-check-pro --pattern "subs-check-pro_Linux_x86_64.tar.gz"
+          gh release download v3.6.1 --repo sinspired/subs-check-pro --pattern "subs-check-pro_Linux_x86_64.tar.gz"
           tar -xzf subs-check-pro_Linux_x86_64.tar.gz
-          rm -f subs-check-pro_Linux_x86_64.tar.gz
-          ls -la subs-check-pro
-
-      - name: 运行测活、测速与纯净度检测
+          chmod +x subs-check-pro
+      - name: 生成云端候选
         run: bash ./scripts/run_in_ci.sh
-
-      - name: 按纯净度与速度精选 Top 20 节点
-        run: python3 ./scripts/select_top20.py
-
-      - name: 提交并推送最新订阅到仓库
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add subs/
-          if git diff --cached --quiet; then
-            echo "订阅内容无变化，跳过提交。"
-            exit 0
-          fi
-          git commit -m "chore: 自动更新精选 Top 20 订阅 [$(TZ=Asia/Shanghai date '+%Y-%m-%d %H:%M')]"
-          git push
+      - name: 保存候选与检测日志
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloud-candidates
+          path: |
+            output/cloud-candidates/
+            output/runs/
+          retention-days: 3

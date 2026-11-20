@@ -1,2 +1,3 @@
 @echo off
-echo %SUCCESS_COUNT%> "%TEMP%\subs_check_done.flag"
+> "%TEMP%\subs_check_done.flag.tmp" echo %SUCCESS_COUNT%
+move /Y "%TEMP%\subs_check_done.flag.tmp" "%TEMP%\subs_check_done.flag" >nul

@@ -1,0 +1,25 @@
+{
+  "checked_at": "2026-11-20T17:03:54.786580+08:00",
+  "collection_started_at": 1795164540.987178,
+  "source": "本机 sing-box 导出链接复测",
+  "verified": true,
+  "count": 2,
+  "tested_count": 2,
+  "nodes": [
+    {
+      "name": "SG 01",
+      "ok": true,
+      "exit_ip": "31.58.117.133",
+      "elapsed_ms": 4484,
+      "link_sha256": "70e8062e739475ced0a81d6feef54616fd1fee361327fec0853640bc53201ad0"
+    },
+    {
+      "name": "EE 01",
+      "ok": true,
+      "exit_ip": "45.83.181.223",
+      "elapsed_ms": 17296,
+      "link_sha256": "ffbf9a71a4b2cd6ab3ef22bf4052c89aa098df901b95bf917bcd429c8c3979a7"
+    }
+  ],
+  "subscription_sha256": "18e7947ed5c9354a4e8b056016947198a0bd315b0c389c701327e76cd80fb1f3"
+}

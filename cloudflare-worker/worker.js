@@ -44,10 +44,10 @@ function renderHomePage(origin) {
 <body>
   <div class="card">
     <h1>🚀 精选 Top 20 公益节点订阅</h1>
-    <p class="sub">每 6 小时自动测速筛选 · IP 纯净度优先 · Cloudflare 加速直连</p>
+    <p class="sub">本机复测通过后更新 · 请查看最近检测时间 · 加速订阅文件下载</p>
 
     <div class="item">
-      <div class="label">Clash Verge / Mihomo / FlClash（推荐，含完整分流规则）</div>
+      <div class="label">Clash Verge / Mihomo / FlClash（基础分流配置）</div>
       <div class="row">
         <input id="u1" readonly value="${origin}/mihomo.yaml" />
         <button onclick="copyUrl('u1', this)">复制</button>

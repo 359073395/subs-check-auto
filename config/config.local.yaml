@@ -1,8 +1,8 @@
 # subs-check-pro Windows 本地真实网络检测配置
-# 直接从本机国内宽带测活测速，确保选出的节点 100% 在本机可用
+# 从本机网络采集初筛；发布前还须独立内核复测，结果不保证持续有效
 
 # -----------进度显示-----------
-print-progress: true
+print-progress: false
 progress-mode: 'auto'
 
 # -----------计划任务-----------

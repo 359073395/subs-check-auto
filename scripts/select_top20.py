@@ -1,17 +1,20 @@
 #!/usr/bin/env python3
 """
-从 subs-check-pro 输出的可用节点中筛选并排序，输出干净的 Mihomo / Base64 / YAML 订阅。
-- 云端模式（默认）：剔除国内易被 SNI 阻断的免费域名与明文协议，保留最多 100 个。
-- 本地模式（--local --top 20）：完全信任本机国内真实宽带实测结果，仅过滤 http/socks5 与劣质出口，精选 Top 20。
+从本轮采集结果筛选节点，复测真实导出链接后统一生成订阅。
+云端只生成候选；本地必须提供独立 sing-box 内核并通过 HTTPS 复测。
 """
 
 from __future__ import annotations
 
 import argparse
 import base64
+import copy
+import hashlib
 import ipaddress
 import json
 import re
+import sys
+import tempfile
 import urllib.parse
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
@@ -19,6 +22,8 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+
+from verify_nodes import read_links, link_name, outbound_from_uri, verify_links
 
 OUTPUT_SUB_DIR = Path("output/sub")
 PUBLISH_DIR = Path("subs")
@@ -170,15 +175,23 @@ def is_allowed_proxy(p: dict[str, Any], strict: bool = True, local_mode: bool = 
     if not server:
         return False
 
-    if has_blocked_domain(p, local_mode=local_mode):
+    if not local_mode and has_blocked_domain(p, local_mode=False):
         return False
 
-    if BAD_EXIT_RE.search(name):
+    if not local_mode and BAD_EXIT_RE.search(name):
+        return False
+    if ptype == "ss" and p.get("cipher") not in {
+        "aes-128-gcm", "aes-256-gcm", "chacha20-ietf-poly1305",
+        "2022-blake3-aes-128-gcm", "2022-blake3-aes-256-gcm", "2022-blake3-chacha20-poly1305",
+    }:
         return False
 
+    # Compatibility exclusions apply even when IP-risk information is unknown.
+    if network not in {"tcp", "raw", "ws", "grpc"}:
+        return False
+    if ptype not in {"ss", "vmess", "vless", "trojan", "hysteria2", "hy2"}:
+        return False
     if strict:
-        if network in {"xhttp", "splithttp"}:
-            return False
         _, _, risk = parse_metrics(name)
         if risk > 100:
             return False
@@ -242,19 +255,6 @@ def dedupe_and_rank(candidates: list[dict[str, Any]], top_n: int, local_mode: bo
     return selected
 
 
-def extract_uri_name(uri: str) -> str:
-    uri = uri.strip()
-    if uri.startswith("vmess://"):
-        payload = uri[len("vmess://") :]
-        padded = payload + "=" * (-len(payload) % 4)
-        try:
-            data = json.loads(base64.b64decode(padded).decode("utf-8", errors="ignore"))
-            return str(data.get("ps", "")).strip()
-        except Exception:
-            return ""
-    if "#" in uri:
-        return urllib.parse.unquote(uri.split("#", 1)[1]).strip()
-    return ""
 
 
 def rename_uri(uri: str, new_name: str) -> str:
@@ -275,172 +275,178 @@ def rename_uri(uri: str, new_name: str) -> str:
     return f"{base_part}#{urllib.parse.quote(new_name)}"
 
 
-def filter_and_rename_base64(name_pairs: list[tuple[str, str]], src_path: Path, dst_path: Path) -> bool:
-    if not src_path.exists():
-        return False
-    raw = src_path.read_text(encoding="utf-8", errors="ignore").strip()
-    if not raw:
-        return False
-
-    padded = raw + "=" * (-len(raw) % 4)
-    try:
-        decoded = base64.b64decode(padded).decode("utf-8", errors="ignore")
-    except Exception:
-        decoded = raw
-
-    uri_by_name: dict[str, str] = {}
-    for line in decoded.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        name = extract_uri_name(line)
-        if name and name not in uri_by_name:
-            uri_by_name[name] = line
-
-    selected_lines = [rename_uri(uri_by_name[orig], clean) for orig, clean in name_pairs if orig in uri_by_name]
-    if not selected_lines:
-        return False
-
-    joined = "\n".join(selected_lines)
-    encoded = base64.b64encode(joined.encode("utf-8")).decode("ascii")
-    dst_path.write_text(encoded + "\n", encoding="utf-8")
-    return True
 
 
-def filter_mihomo(top_proxies: list[dict[str, Any]], orig_to_clean: dict[str, str], src_path: Path, dst_path: Path) -> bool:
-    if not src_path.exists():
-        return False
-    data = yaml.safe_load(src_path.read_text(encoding="utf-8", errors="ignore"))
-    if not isinstance(data, dict):
-        return False
-
-    clean_name_set = {str(p.get("name", "")) for p in top_proxies}
-    data["proxies"] = top_proxies
-
-    groups = data.get("proxy-groups")
-    if isinstance(groups, list):
-        group_names = {g.get("name") for g in groups if isinstance(g, dict) and g.get("name")}
-        builtins = {"DIRECT", "REJECT", "PASS", "COMPATIBLE"}
-        for g in groups:
-            if not isinstance(g, dict):
-                continue
-            plist = g.get("proxies")
-            if isinstance(plist, list):
-                filtered = []
-                for item in plist:
-                    if item in group_names or item in builtins:
-                        filtered.append(item)
-                    elif item in orig_to_clean:
-                        filtered.append(orig_to_clean[item])
-                    elif item in clean_name_set:
-                        filtered.append(item)
-                if not filtered and not g.get("include-all"):
-                    filtered = ["DIRECT"]
-                g["proxies"] = filtered
-
-    dst_path.write_text(
-        yaml.safe_dump(data, allow_unicode=True, sort_keys=False),
-        encoding="utf-8",
-    )
-    return True
+def build_mihomo(proxies: list[dict[str, Any]]) -> dict[str, Any]:
+    """A standalone configuration that needs no remote templates or Geo databases."""
+    names = [p["name"] for p in proxies]
+    return {
+        "mixed-port": 7890, "allow-lan": False, "mode": "rule", "log-level": "warning",
+        "ipv6": False, "proxies": proxies,
+        "proxy-groups": [
+            {"name": "PROXY", "type": "select", "proxies": ["AUTO"] + names},
+            {"name": "AUTO", "type": "url-test", "proxies": names,
+             "url": "https://www.gstatic.com/generate_204", "interval": 300},
+        ],
+        "rules": ["IP-CIDR,127.0.0.0/8,DIRECT,no-resolve",
+                  "IP-CIDR,10.0.0.0/8,DIRECT,no-resolve",
+                  "IP-CIDR,172.16.0.0/12,DIRECT,no-resolve",
+                  "IP-CIDR,192.168.0.0/16,DIRECT,no-resolve",
+                  "DOMAIN-SUFFIX,cn,DIRECT", "MATCH,PROXY"],
+    }
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--top", type=int, default=100)
-    parser.add_argument("--local", action="store_true", help="本机国内网络实测模式")
+    parser.add_argument("--top", type=int, default=20)
+    parser.add_argument("--local", action="store_true", help="verify exported links on this machine")
+    parser.add_argument("--core", type=Path, help="sing-box executable; required for local publication")
+    parser.add_argument("--input-dir", type=Path, default=OUTPUT_SUB_DIR)
+    parser.add_argument("--publish-dir", type=Path)
+    parser.add_argument("--started-at", type=float, required=True, help="collection start Unix timestamp")
     args = parser.parse_args()
+    if args.top < 1:
+        parser.error("--top must be positive")
+    if args.local and not args.core:
+        parser.error("--local requires --core; unverified links cannot be published")
+    publish_dir = args.publish_dir or (PUBLISH_DIR if args.local else Path("output/cloud-candidates"))
+    source_paths = [args.input_dir / "all.yaml", args.input_dir / "base64.txt"]
+    for path in source_paths:
+        if not path.is_file() or path.stat().st_mtime < args.started_at:
+            print(f"FAILED: missing/stale current-run output: {path}")
+            return 1
 
-    top_n = args.top
-    local_mode = args.local
+    all_data = yaml.safe_load(source_paths[0].read_text(encoding="utf-8-sig"))
+    if not isinstance(all_data, dict) or not isinstance(all_data.get("proxies"), list):
+        print("FAILED: malformed all.yaml")
+        return 1
+    proxies = all_data["proxies"]
+    uri_by_name = {}
+    for uri in read_links(source_paths[1]):
+        name = link_name(uri)
+        if name in uri_by_name:
+            print("FAILED: ambiguous duplicate share-link name")
+            return 1
+        uri_by_name[name] = uri
+    candidates = []
+    seen_names = set()
+    for original in proxies:
+        if not isinstance(original, dict):
+            continue
+        name = str(original.get("name", ""))
+        if name in seen_names:
+            print("FAILED: ambiguous duplicate YAML proxy name")
+            return 1
+        seen_names.add(name)
+        if not is_allowed_proxy(original, strict=False, local_mode=args.local) or name not in uri_by_name:
+            continue
+        p = copy.deepcopy(original)
+        uri = uri_by_name[name]
+        # Normalize equivalent raw/tcp spelling before, rather than after, verification.
+        if p.get("network") == "raw":
+            p["network"] = "tcp"
+            u = urllib.parse.urlsplit(uri)
+            q = [(key, "tcp" if key == "type" and value == "raw" else value)
+                 for key, value in urllib.parse.parse_qsl(u.query, keep_blank_values=True)]
+            uri = urllib.parse.urlunsplit(u._replace(query=urllib.parse.urlencode(q)))
+        try:
+            outbound = outbound_from_uri(uri)
+            kind = {"shadowsocks": "ss", "hy2": "hysteria2"}.get(outbound["type"], outbound["type"])
+            p_kind = "hysteria2" if p["type"] == "hy2" else p["type"]
+            identity = "uuid" if p_kind in {"vless", "vmess"} else "password"
+            if (kind != p_kind or str(outbound["server"]).lower() != str(p["server"]).lower()
+                    or outbound["server_port"] != int(p["port"])
+                    or str(outbound[identity]) != str(p[identity])):
+                continue
+        except (KeyError, TypeError, ValueError):
+            continue
+        uri_by_name[name] = uri
+        candidates.append(p)
+    ranked = dedupe_and_rank(candidates, max(len(candidates), 1), local_mode=args.local)
+    reports = []
+    passed = []
+    if args.local:
+        # Test the exact share links, with a separate core and no DIRECT fallback.
+        # Continue through ranked batches so failures never displace working links.
+        for start in range(0, len(ranked), 6):
+            batch = ranked[start:start + 6]
+            checks = verify_links([uri_by_name[p["name"]] for p in batch], args.core)
+            reports.extend(checks)
+            for p, check in zip(batch, checks):
+                print(p["name"], "PASS" if check["ok"] else "FAIL: " + check.get("error", "verification failed"), flush=True)
+                if check["ok"]:
+                    passed.append((p, check))
+            if len(passed) >= args.top:
+                break
+    else:
+        passed = [(p, None) for p in ranked]
+    if args.local:
+        (args.input_dir.parent / "verification_attempt.json").write_text(
+            json.dumps(reports, ensure_ascii=False, indent=2), encoding="utf-8")
+    if not passed:
+        print("FAILED: no exported links passed; published subscriptions were not updated")
+        return 1
+    passed = passed[:args.top]
 
-    all_yaml_path = OUTPUT_SUB_DIR / "all.yaml"
-    if not all_yaml_path.exists():
-        print("未找到 output/sub/all.yaml，跳过本轮精选。")
-        return 0
-
-    all_data = yaml.safe_load(all_yaml_path.read_text(encoding="utf-8", errors="ignore")) or {}
-    proxies = all_data.get("proxies") or []
-    if not proxies:
-        print("本轮可用节点为空，保留已有订阅文件。")
-        return 0
-
-    strict_candidates = [
-        p for p in proxies if isinstance(p, dict) and is_allowed_proxy(p, strict=True, local_mode=local_mode)
-    ]
-    top_proxies = dedupe_and_rank(strict_candidates, top_n, local_mode=local_mode)
-
-    if len(top_proxies) < top_n:
-        relaxed_candidates = [
-            p for p in proxies if isinstance(p, dict) and is_allowed_proxy(p, strict=False, local_mode=local_mode)
-        ]
-        used_keys = {server_dedupe_key(p) for p in top_proxies}
-        extra = [
-            p for p in dedupe_and_rank(relaxed_candidates, top_n, local_mode=local_mode)
-            if server_dedupe_key(p) not in used_keys
-        ]
-        top_proxies.extend(extra[: top_n - len(top_proxies)])
-
-    if not top_proxies:
-        top_proxies = dedupe_and_rank([p for p in proxies if isinstance(p, dict)], top_n, local_mode=local_mode)
-
-    country_counter: dict[str, int] = defaultdict(int)
-    name_pairs: list[tuple[str, str]] = []
-    orig_to_clean: dict[str, str] = {}
-    stats_rows: list[tuple[str, str, str, str, str]] = []
-
-    for p in top_proxies:
-        orig_name = str(p.get("name", ""))
-        code = extract_country_code(orig_name)
+    country_counter = defaultdict(int)
+    top_proxies = []
+    links = []
+    public_checks = []
+    stats_rows = []
+    for p, check in passed:
+        original = p["name"]
+        code = extract_country_code(original)
         country_counter[code] += 1
-        clean_name = f"{code} {country_counter[code]:02d}"
-
-        p["name"] = clean_name
-        name_pairs.append((orig_name, clean_name))
-        orig_to_clean[orig_name] = clean_name
-
-        ptype = str(p.get("type", ""))
-        _, speed_kbps, risk = parse_metrics(orig_name)
-        risk_str = f"{risk}%" if risk <= 100 else "未知"
-        speed_str = f"{speed_kbps / 1024:.1f} MB/s" if speed_kbps >= 1024 else f"{speed_kbps:.0f} KB/s"
-        mode_tag = "本机实测" if local_mode else ("CDN/TLS" if china_friendliness_tier(p) == 0 else "TLS/其他")
-        stats_rows.append((clean_name, ptype, mode_tag, risk_str, speed_str))
-
-    PUBLISH_DIR.mkdir(parents=True, exist_ok=True)
-
-    (PUBLISH_DIR / "all.yaml").write_text(
-        yaml.safe_dump({"proxies": top_proxies}, allow_unicode=True, sort_keys=False),
-        encoding="utf-8",
-    )
-
-    mihomo_src = OUTPUT_SUB_DIR / "mihomo.yaml"
-    if not mihomo_src.exists() and (PUBLISH_DIR / "mihomo.yaml").exists():
-        mihomo_src = PUBLISH_DIR / "mihomo.yaml"
-    has_mihomo = filter_mihomo(top_proxies, orig_to_clean, mihomo_src, PUBLISH_DIR / "mihomo.yaml")
-    has_base64 = filter_and_rename_base64(name_pairs, OUTPUT_SUB_DIR / "base64.txt", PUBLISH_DIR / "base64.txt")
-
-    beijing_tz = timezone(timedelta(hours=8))
-    now_str = datetime.now(beijing_tz).strftime("%Y-%m-%d %H:%M:%S (北京时间)")
-    source_label = "Windows 本机国内真实网络实测" if local_mode else "GitHub Actions 云端检测"
+        clean = f"{code} {country_counter[code]:02d}"
+        p["name"] = clean
+        uri = rename_uri(uri_by_name[original], clean)
+        top_proxies.append(p)
+        links.append(uri)
+        _, speed, risk = parse_metrics(original)
+        stats_rows.append((clean, p["type"], f"{risk}%" if risk <= 100 else "未知", f"{speed / 1024:.2f} MB/s"))
+        if check:
+            public_checks.append({**check, "name": clean,
+                "link_sha256": hashlib.sha256(uri.encode()).hexdigest()})
+    encoded = base64.b64encode("\n".join(links).encode()).decode() + "\n"
+    now = datetime.now(timezone(timedelta(hours=8)))
+    source = "本机 sing-box 导出链接复测" if args.local else "GitHub 云端候选（未经本地复测）"
     lines = [
-        f"# 精选公益节点状态清单 (Top {len(top_proxies)})",
-        "",
-        f"- 检测来源：`{source_label}`",
-        f"- 最近更新时间：`{now_str}`",
-        f"- 本轮通过初筛节点数：`{len(proxies)}`（过滤兼容后：`{len(strict_candidates)}`）",
-        f"- 精选保留节点数：`{len(top_proxies)}`",
-        f"- 已生成订阅：`all.yaml` / `mihomo.yaml` ({'已更新' if has_mihomo else '跳过'}) / `base64.txt` ({'已更新' if has_base64 else '跳过'})",
-        "",
-        "| 序号 | 节点名称 | 协议 | 来源 | 纯净度(风险值) | 测速 |",
-        "| :--- | :--- | :--- | :--- | :--- | :--- |",
+        f"# 公益节点状态清单（{len(top_proxies)} 条）", "",
+        f"- 检测来源：{source}",
+        f"- 最近更新时间：{now:%Y-%m-%d %H:%M:%S}（北京时间）",
+        f"- 采集初筛：{len(proxies)}；兼容候选：{len(candidates)}；最终保留：{len(top_proxies)}",
+        "- 发布条件：独立内核通过两次 Google HTTPS 204 和一次 Cloudflare HTTPS 出口检查。" if args.local
+        else "- 此目录仅保存云端候选，不能覆盖正式订阅。",
+        "- 结果仅代表检测当时的本机网络；公益节点可能随时失效。",
+        "- Mihomo 使用无需远程数据库的基础分流；v2rayN / Shadowrocket 使用 base64.txt。", "",
+        "| 节点 | 协议 | IP 风险参考 | 采集测速参考 |",
+        "| --- | --- | --- | --- |",
     ]
-    for idx, (clean_name, ptype, mode_tag, risk_str, speed_str) in enumerate(stats_rows, start=1):
-        lines.append(f"| {idx} | {clean_name} | {ptype} | {mode_tag} | {risk_str} | {speed_str} |")
-
-    (PUBLISH_DIR / "STATUS.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
-    print(f"精选完成：初筛 {len(proxies)} -> 过滤后 {len(strict_candidates)} -> 精选 Top {len(top_proxies)}。")
+    lines.extend(f"| {name} | {kind} | {risk} | {speed} |" for name, kind, risk, speed in stats_rows)
+    verification = {"checked_at": now.isoformat(), "collection_started_at": args.started_at,
+                    "source": source, "verified": args.local, "count": len(top_proxies),
+                    "tested_count": len(reports), "nodes": public_checks,
+                    "subscription_sha256": hashlib.sha256(encoded.encode()).hexdigest()}
+    # Build and validate the complete set before replacing any published file.
+    publish_dir.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="subs-stage-") as tmp:
+        stage = Path(tmp)
+        (stage / "all.yaml").write_text(yaml.safe_dump({"proxies": top_proxies}, allow_unicode=True, sort_keys=False), encoding="utf-8", newline="\n")
+        (stage / "mihomo.yaml").write_text(yaml.safe_dump(build_mihomo(top_proxies), allow_unicode=True, sort_keys=False), encoding="utf-8", newline="\n")
+        (stage / "base64.txt").write_text(encoded, encoding="utf-8", newline="\n")
+        (stage / "STATUS.md").write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
+        (stage / "verification.json").write_text(json.dumps(verification, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
+        if len(read_links(stage / "base64.txt")) != len(top_proxies):
+            raise ValueError("subscription count mismatch")
+        for path in stage.iterdir():
+            # Same-directory replace is atomic for each file.
+            temporary = publish_dir / (path.name + ".tmp")
+            temporary.write_bytes(path.read_bytes())
+            temporary.replace(publish_dir / path.name)
+    print(f"Generated {len(top_proxies)} {source} nodes in {publish_dir}")
     return 0
 
 
 if __name__ == "__main__":
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     raise SystemExit(main())

@@ -1,105 +1,98 @@
-﻿$ErrorActionPreference = "Stop"
+param([switch]$NoPush)
+$ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 Set-Location $RepoRoot
 
-Write-Host "==================================================" -ForegroundColor Cyan
-Write-Host "  subs-check-pro 本地真实网络检测 & 同步云端订阅" -ForegroundColor Cyan
-Write-Host "==================================================" -ForegroundColor Cyan
-
-# 1. 确保二进制程序存在
-$ExePath = Join-Path $RepoRoot "bin\subs-check-pro.exe"
-if (-not (Test-Path $ExePath)) {
-    Write-Host "[1/4] 正在下载 Windows 版 subs-check-pro.exe ..." -ForegroundColor Yellow
-    New-Item -ItemType Directory -Force -Path (Join-Path $RepoRoot "bin") | Out-Null
-    $ZipPath = Join-Path $RepoRoot "bin\subs-check-pro_Windows_x86_64.zip"
-    $ReleaseUrl = "https://github.com/sinspired/subs-check-pro/releases/latest/download/subs-check-pro_Windows_x86_64.zip"
-    curl.exe -fsSL -L "https://gh-proxy.com/$ReleaseUrl" -o $ZipPath
-    if ($LASTEXITCODE -ne 0 -or -not (Test-Path $ZipPath) -or (Get-Item $ZipPath).Length -lt 1000000) {
-        curl.exe -fsSL -L $ReleaseUrl -o $ZipPath
-    }
-    Expand-Archive -Path $ZipPath -DestinationPath (Join-Path $RepoRoot "bin") -Force
-    Remove-Item $ZipPath -Force
+# Prefer a real interpreter; the Windows Store python alias is not an interpreter.
+$PythonCandidates = @((Join-Path $RepoRoot ".venv\Scripts\python.exe"))
+foreach ($commandName in @("python.exe", "python3.exe")) {
+    $command = Get-Command $commandName -ErrorAction SilentlyContinue
+    if ($command) { $PythonCandidates += $command.Source }
 }
-
-# 2. 确保 pyyaml 可用
-python -c "import yaml" 2>$null
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "[准备] 正在安装 pyyaml ..." -ForegroundColor Yellow
-    python -m pip install --quiet pyyaml
+$nodeCommand = Get-Command node.exe -ErrorAction SilentlyContinue
+if ($nodeCommand) {
+    $dependencyDir = Split-Path (Split-Path (Split-Path $nodeCommand.Source))
+    $PythonCandidates += Join-Path $dependencyDir "python\python.exe"
 }
-
-# 3. 清理旧信号并启动本地检测
-$FlagPath = Join-Path $env:TEMP "subs_check_done.flag"
-if (Test-Path $FlagPath) { Remove-Item $FlagPath -Force }
-
-Write-Host "[2/4] 正在从本机网络采集并实测公益节点（通常需 1~3 分钟，请勿关闭窗口）..." -ForegroundColor Green
-$Proc = Start-Process -FilePath $ExePath -ArgumentList "-f", "config\config.local.yaml" -WorkingDirectory $RepoRoot -PassThru
-
-$MaxWaitSec = 900
-$Elapsed = 0
-while ($true) {
-    if (Test-Path $FlagPath) {
-        Write-Host "`n检测与订阅保存完成，正在优雅退出检测程序..." -ForegroundColor Green
-        Start-Sleep -Seconds 2
-        if (-not $Proc.HasExited) {
-            Stop-Process -Id $Proc.Id -Force -ErrorAction SilentlyContinue
-        }
-        break
+$PythonExe = $null
+foreach ($candidate in $PythonCandidates) {
+    if (Test-Path -LiteralPath $candidate) {
+        try {
+            & $candidate -c "import sys; assert sys.version_info >= (3, 10)" 2>$null
+            if ($LASTEXITCODE -eq 0) { $PythonExe = $candidate; break }
+        } catch { continue }
     }
-    if ($Proc.HasExited) {
-        Write-Host "`nsubs-check-pro 已退出 (ExitCode=$($Proc.ExitCode))。" -ForegroundColor Yellow
-        break
-    }
-    if ($Elapsed -ge $MaxWaitSec) {
-        Write-Host "`n达到最大等待时间 (${MaxWaitSec}s)，正在结束检测进程..." -ForegroundColor Yellow
-        Stop-Process -Id $Proc.Id -Force -ErrorAction SilentlyContinue
-        break
-    }
-    Start-Sleep -Seconds 2
-    $Elapsed += 2
 }
+if (-not $PythonExe) { throw "Python 3.10+ is required. Install Python, then run this file again." }
 
-# 4. 精选 Top 20 并简化节点名称
-Write-Host "[3/4] 正在按 IP 纯净度与本机测速精选 Top 20 并简化命名..." -ForegroundColor Green
-python scripts\select_top20.py --local --top 20
-if ($LASTEXITCODE -ne 0) {
-    throw "select_top20.py 执行失败"
-}
-
-# 5. 推送最新 subs/ 到 GitHub（自动检测本机系统代理是否可用）
-Write-Host "[4/4] 正在同步最新 20 个可用节点到 GitHub 与你的域名订阅..." -ForegroundColor Green
-
-$ProxyArgs = @()
+# A fetch proxy is only used for downloads and Git, never for node verification.
+$FetchProxy = $null
 try {
-    $reg = Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings" -ErrorAction SilentlyContinue
-    if ($reg.ProxyEnable -eq 1 -and $reg.ProxyServer) {
-        $parts = $reg.ProxyServer -split ":"
-        $pHost = $parts[0]
-        $pPort = [int]$parts[1]
+    $reg = Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings"
+    if ($reg.ProxyServer -match "^([^:;=]+):(\d+)$") {
+        $proxyHost = $Matches[1]
+        $proxyPort = [int]$Matches[2]
         $tcp = New-Object System.Net.Sockets.TcpClient
-        $iar = $tcp.BeginConnect($pHost, $pPort, $null, $null)
-        if ($iar.AsyncWaitHandle.WaitOne(800, $false) -and $tcp.Connected) {
-            $ProxyArgs = @("-c", "http.proxy=http://$($reg.ProxyServer)", "-c", "https.proxy=http://$($reg.ProxyServer)")
-        }
-        $tcp.Close()
+        try {
+            $connection = $tcp.BeginConnect($proxyHost, $proxyPort, $null, $null)
+            if ($connection.AsyncWaitHandle.WaitOne(800) -and $tcp.Connected) {
+                $FetchProxy = "http://$($reg.ProxyServer)"
+            }
+        } finally { $tcp.Dispose() }
     }
 } catch {}
+$CurlArgs = @("-fsSL", "--connect-timeout", "15", "--max-time", "180")
+if ($FetchProxy) { $CurlArgs += @("--proxy", $FetchProxy) }
 
-$ErrorActionPreference = "Continue"
-git add subs/
-git diff --cached --quiet
-if ($LASTEXITCODE -ne 0) {
-    $ts = Get-Date -Format "yyyy-MM-dd HH:mm"
-    git commit -m "chore: 本地真实网络实测更新可用订阅 [$ts]"
-    & git @ProxyArgs pull --rebase origin main
-    & git @ProxyArgs push origin main
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "`n全部完成！你的域名订阅与 GitHub 订阅均已更新为最新本机实测可用节点。" -ForegroundColor Cyan
-    } else {
-        Write-Host "`n警告：本地 subs/ 文件已生成，但推送到 GitHub 失败，请确认网络/代理后重试。" -ForegroundColor Red
-    }
-} else {
-    Write-Host "`n订阅内容无变化。" -ForegroundColor Yellow
+$VenvPython = Join-Path $RepoRoot ".venv\Scripts\python.exe"
+if ($PythonExe -ne $VenvPython) {
+    & $PythonExe -m venv (Join-Path $RepoRoot ".venv")
+    if ($LASTEXITCODE -ne 0) { throw "Could not create project Python environment" }
+    $PythonExe = $VenvPython
+}
+$HasYaml = $false
+try { & $PythonExe -c "import yaml" 2>$null; $HasYaml = $LASTEXITCODE -eq 0 } catch {}
+if (-not $HasYaml) {
+    $PipArgs = @("-m", "pip", "install", "PyYAML>=6,<7")
+    if ($FetchProxy) { $PipArgs += @("--proxy", $FetchProxy) }
+    & $PythonExe @PipArgs
+    if ($LASTEXITCODE -ne 0) { throw "Could not install PyYAML" }
+}
+New-Item -ItemType Directory -Force -Path (Join-Path $RepoRoot "bin") | Out-Null
+
+$Collector = Join-Path $RepoRoot "bin\subs-check-pro.exe"
+if (-not (Test-Path -LiteralPath $Collector)) {
+    $archive = Join-Path $RepoRoot "bin\collector.zip"
+    & curl.exe @CurlArgs "https://github.com/sinspired/subs-check-pro/releases/download/v3.6.1/subs-check-pro_Windows_x86_64.zip" -o $archive
+    if ($LASTEXITCODE -ne 0) { throw "Collector download failed" }
+    Expand-Archive -LiteralPath $archive -DestinationPath (Join-Path $RepoRoot "bin") -Force
+    Remove-Item -LiteralPath $archive
+}
+$Core = Join-Path $RepoRoot "bin\sing-box.exe"
+if (-not (Test-Path -LiteralPath $Core)) {
+    $archive = Join-Path $RepoRoot "bin\sing-box.zip"
+    & curl.exe @CurlArgs "https://github.com/SagerNet/sing-box/releases/download/v1.14.2/sing-box-1.14.2-windows-amd64.zip" -o $archive
+    if ($LASTEXITCODE -ne 0) { throw "sing-box download failed" }
+    Expand-Archive -LiteralPath $archive -DestinationPath (Join-Path $RepoRoot "bin") -Force
+    Copy-Item -LiteralPath (Join-Path $RepoRoot "bin\sing-box-1.14.2-windows-amd64\sing-box.exe") -Destination $Core
+    Remove-Item -LiteralPath $archive
+}
+if (-not (Test-Path -LiteralPath $Core) -or -not (Test-Path -LiteralPath $Collector)) {
+    throw "Required executables are missing"
+}
+
+Write-Host "Collecting fresh nodes, then verifying exported links on this machine."
+Write-Host "This may take up to 20 minutes. The collector log path will be printed."
+$PreviousHttpProxy = $env:HTTP_PROXY
+$PreviousHttpsProxy = $env:HTTPS_PROXY
+try {
+    if ($FetchProxy) { $env:HTTP_PROXY = $FetchProxy; $env:HTTPS_PROXY = $FetchProxy }
+    $RunArgs = @("scripts\run_check.py", "--collector", $Collector, "--core", $Core)
+    if (-not $NoPush) { $RunArgs += "--push" }
+    & $PythonExe @RunArgs
+    if ($LASTEXITCODE -ne 0) { throw "Update failed. Old subscriptions were not reported as newly verified; inspect output/runs." }
+} finally {
+    $env:HTTP_PROXY = $PreviousHttpProxy
+    $env:HTTPS_PROXY = $PreviousHttpsProxy
 }
