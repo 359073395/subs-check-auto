@@ -111,6 +111,7 @@ sub-urls-remote:
   - 'https://raw.githubusercontent.com/sinspired/airport/main/subs/merged/cm.txt'
 
 sub-urls:
+  - 'https://www.sanyue.help/node/node.txt'
   - 'https://free.datiya.com/uploads/{Ymd}-clash.yaml'
   - 'https://node.freeclashnode.com/uploads/{Y}/{mm}/0-{Ymd}.yaml'
   - 'https://node.freeclashnode.com/uploads/{Y}/{mm}/1-{Ymd}.yaml'
